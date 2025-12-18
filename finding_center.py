@@ -1,11 +1,12 @@
 import pandas as pd
 from datetime import datetime
 from data_loader import load_and_prepare_data
-from center_of_mass import center_of_mass
-from moments_analysis import moments_analysis
-from gradient_symmetry import gradient_symmetry
+from mass_center_method import center_of_mass
+from image_moments_method import moments_analysis
+from gradient_symmetry_method import gradient_symmetry
 from circle_bubbling_method import circle_bubbling_method
 from metrics import calculate_metrics, calculate_average_center
+import numpy as np
 
 
 def run_comparison():
