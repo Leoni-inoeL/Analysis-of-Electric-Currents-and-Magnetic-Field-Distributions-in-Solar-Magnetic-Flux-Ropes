@@ -2,6 +2,7 @@ import numpy as np
 import math
 from scipy.ndimage import gaussian_filter, sobel, minimum_filter, maximum_filter
 from uncertainty import calculate_edge_based_uncertainty
+from hmi_processor import HMI_Processor
 
 
 class CircleBubblingData:
@@ -126,91 +127,108 @@ def circle_bubbling_algorithm(data_clean, initial_center, initial_diameter):
     return tuple(best_center), best_diameter
 
 
-def circle_bubbling_method(data_clean):
-    try:
-        white_data = CircleBubblingData.get_white_light_data()
+class CircleBubblingMethod(HMI_Processor):
+    def __init__(self):
+        super().__init__()
+        
+    def solar_center(self):
+        if self.data is None:
+            print("No data loaded. Call read_fits() first.")
+            return None, None, None
+        
+        return self.process_method(self.data)
+    
+    def process_method(self, data_clean):
+        try:
+            white_data = CircleBubblingData.get_white_light_data()
 
-        if white_data is not None:
-            print("Circle Bubbling: using WHITE LIGHT data")
-            filtered_data = apply_article_filters(white_data)
-            height, width = filtered_data.shape
-            initial_center = (width / 2, height / 2)
+            if white_data is not None:
+                print("Circle Bubbling: using WHITE LIGHT data")
+                filtered_data = apply_article_filters(white_data)
+                height, width = filtered_data.shape
+                initial_center = (width / 2, height / 2)
 
-            threshold = np.percentile(filtered_data, 80)
-            mask = filtered_data > threshold
+                threshold = np.percentile(filtered_data, 80)
+                mask = filtered_data > threshold
 
-            if np.sum(mask) > 1000:
-                y_idx, x_idx = np.where(mask)
-                if len(x_idx) > 0:
-                    initial_diameter = (np.max(x_idx) - np.min(x_idx) +
-                                        np.max(y_idx) - np.min(y_idx)) / 2
+                if np.sum(mask) > 1000:
+                    y_idx, x_idx = np.where(mask)
+                    if len(x_idx) > 0:
+                        initial_diameter = (np.max(x_idx) - np.min(x_idx) +
+                                            np.max(y_idx) - np.min(y_idx)) / 2
+                    else:
+                        initial_diameter = min(height, width) * 0.8
                 else:
                     initial_diameter = min(height, width) * 0.8
+
+                print(f"Start from center: {initial_center}")
+                print(f"Initial diameter: {initial_diameter:.1f} px")
+
+                center, final_diameter = circle_bubbling_algorithm(
+                    filtered_data, initial_center, initial_diameter
+                )
+
+                method_name = "Circle Bubbling (white light)"
+                data_source = "white light"
+                uncertainty_data = white_data
+
             else:
-                initial_diameter = min(height, width) * 0.8
+                print("Circle Bubbling: using magnetogram data")
+                height, width = data_clean.shape
+                initial_center = (width / 2, height / 2)
+                working_data = np.abs(data_clean)
+                threshold = np.percentile(working_data, 80)
+                mask = working_data > threshold
 
-            print(f"Start from center: {initial_center}")
-            print(f"Initial diameter: {initial_diameter:.1f} px")
+                if len(mask) == 0 or np.sum(mask) == 0:
+                    return None, "Circle Bubbling", None
 
-            center, final_diameter = circle_bubbling_algorithm(
-                filtered_data, initial_center, initial_diameter
+                y_indices, x_indices = np.where(mask)
+
+                if len(x_indices) > 0:
+                    initial_diameter = (np.max(x_indices) - np.min(x_indices) +
+                                        np.max(y_indices) - np.min(y_indices)) / 2
+                else:
+                    initial_diameter = min(data_clean.shape) * 0.5
+
+                center, final_diameter = circle_bubbling_algorithm(
+                    working_data, initial_center, initial_diameter
+                )
+
+                method_name = "Circle Bubbling (magnetogram)"
+                data_source = "magnetogram"
+                uncertainty_data = data_clean
+
+            uncertainty = calculate_edge_based_uncertainty(
+                uncertainty_data,
+                center,
+                disk_radius=final_diameter / 2,
+                edge_width=10
             )
 
-            method_name = "Circle Bubbling (white light)"
-            data_source = "white light"
-            uncertainty_data = white_data
-
-        else:
-            print("Circle Bubbling: using magnetogram data")
-            height, width = data_clean.shape
-            initial_center = (width / 2, height / 2)
-            working_data = np.abs(data_clean)
-            threshold = np.percentile(working_data, 80)
-            mask = working_data > threshold
-
-            if len(mask) == 0 or np.sum(mask) == 0:
-                return None, "Circle Bubbling", None
-
-            y_indices, x_indices = np.where(mask)
-
-            if len(x_indices) > 0:
-                initial_diameter = (np.max(x_indices) - np.min(x_indices) +
-                                    np.max(y_indices) - np.min(y_indices)) / 2
+            if uncertainty:
+                uncertainty['final_diameter'] = final_diameter
+                uncertainty['data_source'] = data_source
+                uncertainty['method'] = 'circle_bubbling'
             else:
-                initial_diameter = min(data_clean.shape) * 0.5
+                uncertainty = {
+                    'std_pixels': (max(1.0, final_diameter * 0.005),
+                                   max(1.0, final_diameter * 0.005)),
+                    'final_diameter': final_diameter,
+                    'data_source': data_source,
+                    'method': 'circle_bubbling'
+                }
 
-            center, final_diameter = circle_bubbling_algorithm(
-                working_data, initial_center, initial_diameter
-            )
+            return center, method_name, uncertainty
 
-            method_name = "Circle Bubbling (magnetogram)"
-            data_source = "magnetogram"
-            uncertainty_data = data_clean
+        except Exception as e:
+            print(f"Circle bubbling method failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None, "Circle Bubbling", None
 
-        uncertainty = calculate_edge_based_uncertainty(
-            uncertainty_data,
-            center,
-            disk_radius=final_diameter / 2,
-            edge_width=10
-        )
 
-        if uncertainty:
-            uncertainty['final_diameter'] = final_diameter
-            uncertainty['data_source'] = data_source
-            uncertainty['method'] = 'circle_bubbling'
-        else:
-            uncertainty = {
-                'std_pixels': (max(1.0, final_diameter * 0.005),
-                               max(1.0, final_diameter * 0.005)),
-                'final_diameter': final_diameter,
-                'data_source': data_source,
-                'method': 'circle_bubbling'
-            }
-
-        return center, method_name, uncertainty
-
-    except Exception as e:
-        print(f"Circle bubbling method failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, "Circle Bubbling", None
+def circle_bubbling_method(data_clean):
+    processor = CircleBubblingMethod()
+    processor.data = data_clean
+    return processor.solar_center()
