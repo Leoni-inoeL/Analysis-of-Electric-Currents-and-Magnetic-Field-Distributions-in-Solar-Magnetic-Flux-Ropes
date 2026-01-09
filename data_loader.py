@@ -1,6 +1,6 @@
 import sunpy.map
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import timedelta
 from sunpy.net import Fido, attrs as a
 import astropy.units as u
 import os
@@ -18,6 +18,7 @@ def load_and_prepare_data(target_date=None):
         CircleBubblingData.set_white_light_data(white_data_clean)
         print(f"White light data stored for Circle Bubbling")
 
+    reference_center = None
     if target_date is not None:
         try:
             date_str = target_date.strftime('%Y-%m-%d %H:%M:%S')
@@ -59,15 +60,18 @@ def load_and_prepare_data(target_date=None):
                 print(f"No magnetogram data found for {target_date}, using sample data")
                 from sunpy.data.sample import HMI_LOS_IMAGE
                 sample_map = sunpy.map.Map(HMI_LOS_IMAGE)
+                print(f"Using HMI_LOS_IMAGE sample data: {HMI_LOS_IMAGE}")
 
         except Exception as e:
             print(f"Error loading magnetogram data: {e}")
             print("Using sample magnetogram data instead")
             from sunpy.data.sample import HMI_LOS_IMAGE
             sample_map = sunpy.map.Map(HMI_LOS_IMAGE)
+            print(f"Using HMI_LOS_IMAGE sample data: {HMI_LOS_IMAGE}")
     else:
         from sunpy.data.sample import HMI_LOS_IMAGE
         sample_map = sunpy.map.Map(HMI_LOS_IMAGE)
+        print(f"Using HMI_LOS_IMAGE sample data: {HMI_LOS_IMAGE}")
 
     print(f"Magnetogram data shape: {sample_map.data.shape}")
     print(f"Magnetogram observation date: {sample_map.date}")
@@ -77,12 +81,34 @@ def load_and_prepare_data(target_date=None):
 
     sample_map_clean = sunpy.map.Map(data_clean, sample_map.meta)
 
-    if white_light_center:
-        reference_center = white_light_center
-        print(f"Using white light center as reference: ({reference_center[0]:.2f}, {reference_center[1]:.2f})")
-    else:
-        height, width = data_clean.shape
-        reference_center = (width / 2, height / 2)
-        print(f"Using image center as reference: ({reference_center[0]:.2f}, {reference_center[1]:.2f})")
+    magnetogram_center = None
+    if 'CRPIX1' in sample_map.meta and 'CRPIX2' in sample_map.meta:
+        magnetogram_center = (
+            float(sample_map.meta['CRPIX1']) - 1,
+            float(sample_map.meta['CRPIX2']) - 1
+        )
+
+    white_light_metadata_center = None
+    if white_map is not None and 'CRPIX1' in white_map.meta and 'CRPIX2' in white_map.meta:
+        white_light_metadata_center = (
+            float(white_map.meta['CRPIX1']) - 1,
+            float(white_map.meta['CRPIX2']) - 1
+        )
+        print(f"\nWhite light (0-based) center: ({white_light_metadata_center[0]:.2f}, "
+              f"{white_light_metadata_center[1]:.2f})")
+
+    if magnetogram_center is not None:
+        reference_center = magnetogram_center
+        print(f"\nUsing magnetogram reference center: {reference_center}")
+
+        if white_light_metadata_center is not None:
+            dx = white_light_metadata_center[0] - magnetogram_center[0]
+            dy = white_light_metadata_center[1] - magnetogram_center[1]
+            distance = np.sqrt(dx ** 2 + dy ** 2)
+            print(f"White light/magnetogram difference: Δx={dx:+.2f}, Δy={dy:+.2f}, dist={distance:.2f} px")
+
+    elif white_light_metadata_center is not None:
+        reference_center = white_light_metadata_center
+        print(f"\nUsing white light as reference center: {reference_center}")
 
     return sample_map_clean, data_clean, reference_center
