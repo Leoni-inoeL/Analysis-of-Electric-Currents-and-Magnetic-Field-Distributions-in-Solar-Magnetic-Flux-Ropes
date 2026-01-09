@@ -62,6 +62,13 @@ def get_white_light_center(target_date):
             print(f"Loaded white light: {white_map.date}")
             print(f"Size: {white_map.data.shape}")
 
+            if 'CRPIX1' in white_map.meta and 'CRPIX2' in white_map.meta:
+                center_x = float(white_map.meta['CRPIX1']) - 1
+                center_y = float(white_map.meta['CRPIX2']) - 1
+                return (center_x, center_y), white_map
+
+            print("No CRPIX found in metadata, using heuristic method...")
+
             data = np.nan_to_num(white_map.data, nan=0.0)
             threshold = np.percentile(data, 90)
             mask = data > threshold
@@ -70,11 +77,11 @@ def get_white_light_center(target_date):
                 y_idx, x_idx = np.where(mask)
                 center_x = np.mean(x_idx)
                 center_y = np.mean(y_idx)
-                print(f"Center (threshold+mass): ({center_x:.2f}, {center_y:.2f})")
+                print(f"Center (90th percentile heuristic): ({center_x:.2f}, {center_y:.2f})")
             else:
                 height, width = data.shape
                 center_x, center_y = width / 2, height / 2
-                print(f"Center (image center): ({center_x:.2f}, {center_y:.2f})")
+                print(f"Center (image center fallback): ({center_x:.2f}, {center_y:.2f})")
 
             return (center_x, center_y), white_map
 
@@ -83,7 +90,9 @@ def get_white_light_center(target_date):
             return None, None
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error loading white light data: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None
 
 
