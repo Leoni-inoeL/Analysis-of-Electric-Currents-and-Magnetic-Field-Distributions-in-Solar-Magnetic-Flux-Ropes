@@ -99,6 +99,234 @@ def decompose_curl_cylindrical(points_array, curl_array, center, Z_prime, X_prim
     return curl_B_r, curl_B_phi, curl_B_n
 
 
+def create_sphere_heatmap_profiles(df, center, radius, base_path):
+    points_local = df[['x_prime', 'y_prime']].values
+    distances = np.sqrt(points_local[:, 0] ** 2 + points_local[:, 1] ** 2)
+
+    inside_mask = distances <= radius
+    df_sphere = df[inside_mask].copy()
+    df_sphere['r'] = distances[inside_mask]
+
+    if len(df_sphere) < 3:
+        return None
+
+    components = ['B_n', 'B_r', 'B_phi']
+    components = [c for c in components if c in df.columns]
+
+    fig = plt.figure(figsize=(20, 12))
+
+    profiles_data = {}
+
+    for idx, component in enumerate(components):
+        ax1 = plt.subplot(3, 4, idx * 4 + 1)
+
+        sc1 = ax1.scatter(df_sphere['x_prime'], df_sphere['y_prime'],
+                          c=df_sphere[component], cmap='coolwarm',
+                          s=100, alpha=0.7, edgecolors='black', linewidth=0.5)
+
+        circle = plt.Circle((0, 0), radius, color='black', fill=False,
+                            linestyle='--', linewidth=2)
+        ax1.add_patch(circle)
+
+        ax1.set_xlabel("X' [m]", fontsize=10)
+        ax1.set_ylabel("Y' [m]", fontsize=10)
+        ax1.set_title(f"{component} Distribution", fontsize=11, fontweight='bold')
+        ax1.grid(True, alpha=0.3, linestyle=':')
+        ax1.set_aspect('equal')
+        ax1.set_xlim(-radius * 1.1, radius * 1.1)
+        ax1.set_ylim(-radius * 1.1, radius * 1.1)
+        cbar1 = plt.colorbar(sc1, ax=ax1)
+        cbar1.set_label(f'{component} [T]', fontsize=9)
+
+        n_profile_bins = min(15, max(5, len(df_sphere) // 10))
+        x_bins = np.linspace(-radius, radius, n_profile_bins + 1)
+        y_bins = np.linspace(-radius, radius, n_profile_bins + 1)
+
+        x_centers = (x_bins[1:] + x_bins[:-1]) / 2
+        y_centers = (y_bins[1:] + y_bins[:-1]) / 2
+
+        x_profile = []
+        x_std = []
+        x_valid = []
+
+        for i in range(len(x_bins) - 1):
+            circle_radius_at_x = np.sqrt(max(0, radius ** 2 - x_centers[i] ** 2))
+
+            if circle_radius_at_x > 0.01:
+                mask = (df_sphere['x_prime'] >= x_bins[i]) & (df_sphere['x_prime'] < x_bins[i + 1])
+                mask = mask & (df_sphere['y_prime'].abs() <= circle_radius_at_x)
+
+                if mask.sum() > 0:
+                    values = df_sphere.loc[mask, component]
+                    x_profile.append(values.mean())
+                    x_std.append(values.std(ddof=1) if len(values) > 1 else 0)
+                    x_valid.append(True)
+                else:
+                    x_profile.append(np.nan)
+                    x_std.append(0)
+                    x_valid.append(False)
+            else:
+                x_profile.append(np.nan)
+                x_std.append(0)
+                x_valid.append(False)
+
+        ax2 = plt.subplot(3, 4, idx * 4 + 2)
+        valid_x = np.array(x_valid)
+
+        if valid_x.any():
+            x_centers_valid = x_centers[valid_x]
+            x_profile_valid = np.array(x_profile)[valid_x]
+            x_std_valid = np.array(x_std)[valid_x]
+
+            ax2.errorbar(x_centers_valid, x_profile_valid, yerr=x_std_valid,
+                         fmt='b-', linewidth=2.5, markersize=0, capsize=3,
+                         elinewidth=1.5, capthick=1.5, label='Mean ± Std')
+            ax2.fill_between(x_centers_valid,
+                             x_profile_valid - x_std_valid,
+                             x_profile_valid + x_std_valid,
+                             alpha=0.2, color='blue', label='Std deviation')
+
+        ax2.set_xlabel("X' coordinate [m]", fontsize=10)
+        ax2.set_ylabel(f"{component} [T]", fontsize=10)
+        ax2.set_title(f"{component} along X' axis", fontsize=11, fontweight='bold')
+        ax2.grid(True, alpha=0.3, linestyle=':')
+        ax2.legend(fontsize=9, loc='best')
+        ax2.set_xlim(-radius * 1.05, radius * 1.05)
+
+        y_profile = []
+        y_std = []
+        y_valid = []
+
+        for i in range(len(y_bins) - 1):
+            circle_radius_at_y = np.sqrt(max(0, radius ** 2 - y_centers[i] ** 2))
+
+            if circle_radius_at_y > 0.01:
+                mask = (df_sphere['y_prime'] >= y_bins[i]) & (df_sphere['y_prime'] < y_bins[i + 1])
+                mask = mask & (df_sphere['x_prime'].abs() <= circle_radius_at_y)
+
+                if mask.sum() > 0:
+                    values = df_sphere.loc[mask, component]
+                    y_profile.append(values.mean())
+                    y_std.append(values.std(ddof=1) if len(values) > 1 else 0)
+                    y_valid.append(True)
+                else:
+                    y_profile.append(np.nan)
+                    y_std.append(0)
+                    y_valid.append(False)
+            else:
+                y_profile.append(np.nan)
+                y_std.append(0)
+                y_valid.append(False)
+
+        ax3 = plt.subplot(3, 4, idx * 4 + 3)
+        valid_y = np.array(y_valid)
+
+        if valid_y.any():
+            y_centers_valid = y_centers[valid_y]
+            y_profile_valid = np.array(y_profile)[valid_y]
+            y_std_valid = np.array(y_std)[valid_y]
+
+            ax3.errorbar(y_centers_valid, y_profile_valid, yerr=y_std_valid,
+                         fmt='r-', linewidth=2.5, markersize=0, capsize=3,
+                         elinewidth=1.5, capthick=1.5, label='Mean ± Std')
+            ax3.fill_between(y_centers_valid,
+                             y_profile_valid - y_std_valid,
+                             y_profile_valid + y_std_valid,
+                             alpha=0.2, color='red', label='Std deviation')
+
+        ax3.set_xlabel("Y' coordinate [m]", fontsize=10)
+        ax3.set_ylabel(f"{component} [T]", fontsize=10)
+        ax3.set_title(f"{component} along Y' axis", fontsize=11, fontweight='bold')
+        ax3.grid(True, alpha=0.3, linestyle=':')
+        ax3.legend(fontsize=9, loc='best')
+        ax3.set_xlim(-radius * 1.05, radius * 1.05)
+
+        ax4 = plt.subplot(3, 4, idx * 4 + 4)
+
+        radial_bins = np.linspace(0, radius, min(15, max(5, len(df_sphere) // 5)))
+        radial_centers = (radial_bins[1:] + radial_bins[:-1]) / 2
+        radial_profile = []
+        radial_std = []
+
+        for i in range(len(radial_bins) - 1):
+            mask = (df_sphere['r'] >= radial_bins[i]) & (df_sphere['r'] < radial_bins[i + 1])
+            if mask.sum() > 0:
+                values = df_sphere.loc[mask, component]
+                radial_profile.append(values.mean())
+                radial_std.append(values.std(ddof=1) if len(values) > 1 else 0)
+            else:
+                radial_profile.append(np.nan)
+                radial_std.append(0)
+
+        valid_radial = ~np.isnan(radial_profile)
+        if valid_radial.any():
+            radial_profile_valid = np.array(radial_profile)[valid_radial]
+            radial_std_valid = np.array(radial_std)[valid_radial]
+            radial_centers_valid = radial_centers[valid_radial]
+
+            ax4.errorbar(radial_centers_valid, radial_profile_valid, yerr=radial_std_valid,
+                         fmt='g-', linewidth=2.5, markersize=0, capsize=3,
+                         elinewidth=1.5, capthick=1.5, label='Mean ± Std')
+            ax4.fill_between(radial_centers_valid,
+                             radial_profile_valid - radial_std_valid,
+                             radial_profile_valid + radial_std_valid,
+                             alpha=0.2, color='green', label='Std deviation')
+
+        ax4.set_xlabel('Radial distance [m]', fontsize=10)
+        ax4.set_ylabel(f"{component} [T]", fontsize=10)
+        ax4.set_title(f"{component} radial profile", fontsize=11, fontweight='bold')
+        ax4.grid(True, alpha=0.3, linestyle=':')
+        ax4.legend(fontsize=9, loc='best')
+
+        profiles_data[component] = {
+            'x_centers': x_centers.tolist(),
+            'x_profile': x_profile,
+            'x_std': x_std,
+            'x_valid': x_valid,
+            'y_centers': y_centers.tolist(),
+            'y_profile': y_profile,
+            'y_std': y_std,
+            'y_valid': y_valid,
+            'radial_centers': radial_centers.tolist(),
+            'radial_profile': radial_profile,
+            'radial_std': radial_std
+        }
+
+    plt.suptitle(f'Magnetic Field Analysis Inside Sphere\nRadius: {radius} m | Points inside: {len(df_sphere)}',
+                 fontsize=14, fontweight='bold', y=1.02)
+
+    plt.tight_layout()
+    output_path = os.path.join(base_path, 'sphere_analysis.png')
+    plt.savefig(output_path, dpi=200, bbox_inches='tight')
+    plt.close()
+
+    # Create separate DataFrames for each profile type
+    profiles_x_df = pd.DataFrame({'x_coordinate': x_centers})
+    profiles_y_df = pd.DataFrame({'y_coordinate': y_centers})
+    profiles_radial_df = pd.DataFrame({'radial_distance': radial_centers})
+
+    for component in components:
+        if component in profiles_data:
+            profiles_x_df[f'{component}_x_profile'] = profiles_data[component]['x_profile']
+            profiles_x_df[f'{component}_x_std'] = profiles_data[component]['x_std']
+
+            profiles_y_df[f'{component}_y_profile'] = profiles_data[component]['y_profile']
+            profiles_y_df[f'{component}_y_std'] = profiles_data[component]['y_std']
+
+            profiles_radial_df[f'{component}_radial_profile'] = profiles_data[component]['radial_profile']
+            profiles_radial_df[f'{component}_radial_std'] = profiles_data[component]['radial_std']
+
+    csv_output_x = os.path.join(base_path, 'sphere_profiles_x.csv')
+    csv_output_y = os.path.join(base_path, 'sphere_profiles_y.csv')
+    csv_output_radial = os.path.join(base_path, 'sphere_profiles_radial.csv')
+
+    profiles_x_df.to_csv(csv_output_x, index=False)
+    profiles_y_df.to_csv(csv_output_y, index=False)
+    profiles_radial_df.to_csv(csv_output_radial, index=False)
+
+    return df_sphere, profiles_data
+
+
 base_path = 'C:/Users/user/Desktop/SummerPractice/'
 os.makedirs(base_path, exist_ok=True)
 
@@ -123,21 +351,20 @@ cell_data = data.GetCellData()
 volume = 0
 b1_total, b2_total, b3_total = 0, 0, 0
 
+values = {'Volume': 0, 'b1': 0, 'b2': 0, 'b3': 0}
+
 for i in range(cell_data.GetNumberOfArrays()):
     arr = cell_data.GetArray(i)
     name = arr.GetName()
 
     if arr.GetNumberOfComponents() == 1 and arr.GetNumberOfTuples() > 0:
-        value = arr.GetValue(0)
+        if name in values:
+            values[name] = arr.GetValue(0)
 
-        if name == 'Volume':
-            volume = value
-        elif name == 'b1':
-            b1_total = value
-        elif name == 'b2':
-            b2_total = value
-        elif name == 'b3':
-            b3_total = value
+volume = values['Volume']
+b1_total = values['b1']
+b2_total = values['b2']
+b3_total = values['b3']
 
 b1_mean = b1_total / volume
 b2_mean = b2_total / volume
@@ -341,78 +568,147 @@ if len(curl_components) == 3 and all(col in df.columns for col in points_cols):
 else:
     exit()
 
+points_local = df[['x_prime', 'y_prime']].values
+distances = np.sqrt(points_local[:, 0]**2 + points_local[:, 1]**2)
+inside_mask = distances <= radius
+df_sphere = df[inside_mask].copy()
+
+sphere_cylindrical_output = base_path + 'slice_data_cylindrical_sphere.csv'
+df_sphere.to_csv(sphere_cylindrical_output, index=False)
+
 fig_task4, axes_task4 = plt.subplots(1, 3, figsize=(18, 5))
 
-# B_n
-sc1 = axes_task4[0].scatter(df['x_prime'], df['y_prime'], c=df['B_n'],
-                            cmap='coolwarm', s=8, alpha=0.8)
-axes_task4[0].set_xlabel('X\' (m)')
-axes_task4[0].set_ylabel('Y\' (m)')
-axes_task4[0].set_title('B_n distribution')
-axes_task4[0].set_aspect('equal')
-axes_task4[0].grid(True, alpha=0.3)
-plt.colorbar(sc1, ax=axes_task4[0]).set_label('B_n [T]', rotation=270, labelpad=15)
+if 'B_n' in df_sphere.columns and len(df_sphere) > 0:
+    vmin_n = df_sphere['B_n'].quantile(0.05)
+    vmax_n = df_sphere['B_n'].quantile(0.95)
+    sc1 = axes_task4[0].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
+                                c=df_sphere['B_n'], cmap='coolwarm',
+                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
+                                vmin=vmin_n, vmax=vmax_n)
+    circle1 = plt.Circle((0, 0), radius, color='black', fill=False,
+                        linestyle='--', linewidth=1.5, alpha=0.7)
+    axes_task4[0].add_patch(circle1)
+    axes_task4[0].set_xlabel('X\' (m)')
+    axes_task4[0].set_ylabel('Y\' (m)')
+    axes_task4[0].set_title('B_n (inside sphere)')
+    axes_task4[0].set_aspect('equal')
+    axes_task4[0].grid(True, alpha=0.3)
+    axes_task4[0].set_xlim(-radius*1.1, radius*1.1)
+    axes_task4[0].set_ylim(-radius*1.1, radius*1.1)
+    plt.colorbar(sc1, ax=axes_task4[0]).set_label('B_n [T]', rotation=270, labelpad=15)
 
 # B_r
-sc2 = axes_task4[1].scatter(df['x_prime'], df['y_prime'], c=df['B_r'],
-                            cmap='coolwarm', s=8, alpha=0.8)
-axes_task4[1].set_xlabel('X\' (m)')
-axes_task4[1].set_ylabel('Y\' (m)')
-axes_task4[1].set_title('B_r distribution')
-axes_task4[1].set_aspect('equal')
-axes_task4[1].grid(True, alpha=0.3)
-plt.colorbar(sc2, ax=axes_task4[1]).set_label('B_r [T]', rotation=270, labelpad=15)
+if 'B_r' in df_sphere.columns and len(df_sphere) > 0:
+    vmin_r = df_sphere['B_r'].quantile(0.05)
+    vmax_r = df_sphere['B_r'].quantile(0.95)
+    sc2 = axes_task4[1].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
+                                c=df_sphere['B_r'], cmap='coolwarm',
+                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
+                                vmin=vmin_r, vmax=vmax_r)
+    circle2 = plt.Circle((0, 0), radius, color='black', fill=False,
+                        linestyle='--', linewidth=1.5, alpha=0.7)
+    axes_task4[1].add_patch(circle2)
+    axes_task4[1].set_xlabel('X\' (m)')
+    axes_task4[1].set_ylabel('Y\' (m)')
+    axes_task4[1].set_title('B_r (inside sphere)')
+    axes_task4[1].set_aspect('equal')
+    axes_task4[1].grid(True, alpha=0.3)
+    axes_task4[1].set_xlim(-radius*1.1, radius*1.1)
+    axes_task4[1].set_ylim(-radius*1.1, radius*1.1)
+    plt.colorbar(sc2, ax=axes_task4[1]).set_label('B_r [T]', rotation=270, labelpad=15)
 
 # B_phi
-sc3 = axes_task4[2].scatter(df['x_prime'], df['y_prime'], c=df['B_phi'],
-                            cmap='coolwarm', s=8, alpha=0.8)
-axes_task4[2].set_xlabel('X\' (m)')
-axes_task4[2].set_ylabel('Y\' (m)')
-axes_task4[2].set_title('B_φ distribution')
-axes_task4[2].set_aspect('equal')
-axes_task4[2].grid(True, alpha=0.3)
-plt.colorbar(sc3, ax=axes_task4[2]).set_label('B_φ [T]', rotation=270, labelpad=15)
+if 'B_phi' in df_sphere.columns and len(df_sphere) > 0:
+    vmin_phi = df_sphere['B_phi'].quantile(0.05)
+    vmax_phi = df_sphere['B_phi'].quantile(0.95)
+    sc3 = axes_task4[2].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
+                                c=df_sphere['B_phi'], cmap='coolwarm',
+                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
+                                vmin=vmin_phi, vmax=vmax_phi)
+    circle3 = plt.Circle((0, 0), radius, color='black', fill=False,
+                        linestyle='--', linewidth=1.5, alpha=0.7)
+    axes_task4[2].add_patch(circle3)
+    axes_task4[2].set_xlabel('X\' (m)')
+    axes_task4[2].set_ylabel('Y\' (m)')
+    axes_task4[2].set_title('B_φ (inside sphere)')
+    axes_task4[2].set_aspect('equal')
+    axes_task4[2].grid(True, alpha=0.3)
+    axes_task4[2].set_xlim(-radius*1.1, radius*1.1)
+    axes_task4[2].set_ylim(-radius*1.1, radius*1.1)
+    plt.colorbar(sc3, ax=axes_task4[2]).set_label('B_φ [T]', rotation=270, labelpad=15)
 
-plt.suptitle(f'Magnetic Field Components (O={center}, R={radius}m)', fontsize=14, y=1.02)
+plt.suptitle(f'Magnetic Field Components Inside Sphere\nRadius: {radius}m | Points: {len(df_sphere)}',
+             fontsize=14, y=1.02)
 plt.tight_layout()
-plt.savefig(base_path + 'task4_B_components.png', dpi=150, bbox_inches='tight')
+plt.savefig(base_path + 'task4_B_components_sphere.png', dpi=150, bbox_inches='tight')
 plt.close()
 
 fig_task5, axes_task5 = plt.subplots(1, 3, figsize=(18, 5))
 
 # curl_B_n
-sc4 = axes_task5[0].scatter(df['x_prime'], df['y_prime'], c=df['curl_B_n_exact'],
-                            cmap='coolwarm', s=8, alpha=0.8)
-axes_task5[0].set_xlabel('X\' (m)')
-axes_task5[0].set_ylabel('Y\' (m)')
-axes_task5[0].set_title('∇×B_n')
-axes_task5[0].set_aspect('equal')
-axes_task5[0].grid(True, alpha=0.3)
-plt.colorbar(sc4, ax=axes_task5[0]).set_label('∇×B_n [A/m²]', rotation=270, labelpad=15)
+if 'curl_B_n_exact' in df_sphere.columns and len(df_sphere) > 0:
+    vmin_curl_n = df_sphere['curl_B_n_exact'].quantile(0.05)
+    vmax_curl_n = df_sphere['curl_B_n_exact'].quantile(0.95)
+    sc4 = axes_task5[0].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
+                                c=df_sphere['curl_B_n_exact'], cmap='coolwarm',
+                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
+                                vmin=vmin_curl_n, vmax=vmax_curl_n)
+    circle4 = plt.Circle((0, 0), radius, color='black', fill=False,
+                        linestyle='--', linewidth=1.5, alpha=0.7)
+    axes_task5[0].add_patch(circle4)
+    axes_task5[0].set_xlabel('X\' (m)')
+    axes_task5[0].set_ylabel('Y\' (m)')
+    axes_task5[0].set_title('∇×B_n (inside sphere)')
+    axes_task5[0].set_aspect('equal')
+    axes_task5[0].grid(True, alpha=0.3)
+    axes_task5[0].set_xlim(-radius*1.1, radius*1.1)
+    axes_task5[0].set_ylim(-radius*1.1, radius*1.1)
+    plt.colorbar(sc4, ax=axes_task5[0]).set_label('∇×B_n [A/m²]', rotation=270, labelpad=15)
 
 # curl_B_r
-sc5 = axes_task5[1].scatter(df['x_prime'], df['y_prime'], c=df['curl_B_r_exact'],
-                            cmap='coolwarm', s=8, alpha=0.8)
-axes_task5[1].set_xlabel('X\' (m)')
-axes_task5[1].set_ylabel('Y\' (m)')
-axes_task5[1].set_title('∇×B_r')
-axes_task5[1].set_aspect('equal')
-axes_task5[1].grid(True, alpha=0.3)
-plt.colorbar(sc5, ax=axes_task5[1]).set_label('∇×B_r [A/m²]', rotation=270, labelpad=15)
+if 'curl_B_r_exact' in df_sphere.columns and len(df_sphere) > 0:
+    vmin_curl_r = df_sphere['curl_B_r_exact'].quantile(0.05)
+    vmax_curl_r = df_sphere['curl_B_r_exact'].quantile(0.95)
+    sc5 = axes_task5[1].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
+                                c=df_sphere['curl_B_r_exact'], cmap='coolwarm',
+                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
+                                vmin=vmin_curl_r, vmax=vmax_curl_r)
+    circle5 = plt.Circle((0, 0), radius, color='black', fill=False,
+                        linestyle='--', linewidth=1.5, alpha=0.7)
+    axes_task5[1].add_patch(circle5)
+    axes_task5[1].set_xlabel('X\' (m)')
+    axes_task5[1].set_ylabel('Y\' (m)')
+    axes_task5[1].set_title('∇×B_r (inside sphere)')
+    axes_task5[1].set_aspect('equal')
+    axes_task5[1].grid(True, alpha=0.3)
+    axes_task5[1].set_xlim(-radius*1.1, radius*1.1)
+    axes_task5[1].set_ylim(-radius*1.1, radius*1.1)
+    plt.colorbar(sc5, ax=axes_task5[1]).set_label('∇×B_r [A/m²]', rotation=270, labelpad=15)
 
 # curl_B_phi
-sc6 = axes_task5[2].scatter(df['x_prime'], df['y_prime'], c=df['curl_B_phi_exact'],
-                            cmap='coolwarm', s=8, alpha=0.8)
-axes_task5[2].set_xlabel('X\' (m)')
-axes_task5[2].set_ylabel('Y\' (m)')
-axes_task5[2].set_title('∇×B_φ')
-axes_task5[2].set_aspect('equal')
-axes_task5[2].grid(True, alpha=0.3)
-plt.colorbar(sc6, ax=axes_task5[2]).set_label('∇×B_φ [A/m²]', rotation=270, labelpad=15)
+if 'curl_B_phi_exact' in df_sphere.columns and len(df_sphere) > 0:
+    vmin_curl_phi = df_sphere['curl_B_phi_exact'].quantile(0.05)
+    vmax_curl_phi = df_sphere['curl_B_phi_exact'].quantile(0.95)
+    sc6 = axes_task5[2].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
+                                c=df_sphere['curl_B_phi_exact'], cmap='coolwarm',
+                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
+                                vmin=vmin_curl_phi, vmax=vmax_curl_phi)
+    circle6 = plt.Circle((0, 0), radius, color='black', fill=False,
+                        linestyle='--', linewidth=1.5, alpha=0.7)
+    axes_task5[2].add_patch(circle6)
+    axes_task5[2].set_xlabel('X\' (m)')
+    axes_task5[2].set_ylabel('Y\' (m)')
+    axes_task5[2].set_title('∇×B_φ (inside sphere)')
+    axes_task5[2].set_aspect('equal')
+    axes_task5[2].grid(True, alpha=0.3)
+    axes_task5[2].set_xlim(-radius*1.1, radius*1.1)
+    axes_task5[2].set_ylim(-radius*1.1, radius*1.1)
+    plt.colorbar(sc6, ax=axes_task5[2]).set_label('∇×B_φ [A/m²]', rotation=270, labelpad=15)
 
-plt.suptitle(f'∇×B Components\nO={center}, R={radius}m',
+plt.suptitle(f'∇×B Components Inside Sphere\nRadius: {radius}m | Points: {len(df_sphere)}',
              fontsize=12, y=1.02)
 plt.tight_layout()
-plt.savefig(base_path + 'task5_curl_B.png', dpi=150, bbox_inches='tight')
+plt.savefig(base_path + 'task5_curl_B_sphere.png', dpi=150, bbox_inches='tight')
 plt.close()
 
+df_sphere, profiles_data = create_sphere_heatmap_profiles(df, center, radius, base_path)
