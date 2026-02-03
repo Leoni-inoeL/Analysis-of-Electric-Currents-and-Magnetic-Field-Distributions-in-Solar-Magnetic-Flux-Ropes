@@ -578,137 +578,79 @@ df_sphere.to_csv(sphere_cylindrical_output, index=False)
 
 fig_task4, axes_task4 = plt.subplots(1, 3, figsize=(18, 5))
 
-if 'B_n' in df_sphere.columns and len(df_sphere) > 0:
-    vmin_n = df_sphere['B_n'].quantile(0.05)
-    vmax_n = df_sphere['B_n'].quantile(0.95)
-    sc1 = axes_task4[0].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
-                                c=df_sphere['B_n'], cmap='coolwarm',
-                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
-                                vmin=vmin_n, vmax=vmax_n)
-    circle1 = plt.Circle((0, 0), radius, color='black', fill=False,
-                        linestyle='--', linewidth=1.5, alpha=0.7)
-    axes_task4[0].add_patch(circle1)
-    axes_task4[0].set_xlabel('X\' (m)')
-    axes_task4[0].set_ylabel('Y\' (m)')
-    axes_task4[0].set_title('B_n (inside sphere)')
-    axes_task4[0].set_aspect('equal')
-    axes_task4[0].grid(True, alpha=0.3)
-    axes_task4[0].set_xlim(-radius*1.1, radius*1.1)
-    axes_task4[0].set_ylim(-radius*1.1, radius*1.1)
-    plt.colorbar(sc1, ax=axes_task4[0]).set_label('B_n [T]', rotation=270, labelpad=15)
+# B_n
+
+sc1 = axes_task4[0].scatter(df['x_prime'], df['y_prime'], c=df['B_n'],
+                            cmap='coolwarm', s=8, alpha=0.8)
+axes_task4[0].set_xlabel('X\' (m)')
+axes_task4[0].set_ylabel('Y\' (m)')
+axes_task4[0].set_title('B_n distribution')
+axes_task4[0].set_aspect('equal')
+axes_task4[0].grid(True, alpha=0.3)
+plt.colorbar(sc1, ax=axes_task4[0]).set_label('B_n [T]', rotation=270, labelpad=15)
 
 # B_r
-if 'B_r' in df_sphere.columns and len(df_sphere) > 0:
-    vmin_r = df_sphere['B_r'].quantile(0.05)
-    vmax_r = df_sphere['B_r'].quantile(0.95)
-    sc2 = axes_task4[1].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
-                                c=df_sphere['B_r'], cmap='coolwarm',
-                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
-                                vmin=vmin_r, vmax=vmax_r)
-    circle2 = plt.Circle((0, 0), radius, color='black', fill=False,
-                        linestyle='--', linewidth=1.5, alpha=0.7)
-    axes_task4[1].add_patch(circle2)
-    axes_task4[1].set_xlabel('X\' (m)')
-    axes_task4[1].set_ylabel('Y\' (m)')
-    axes_task4[1].set_title('B_r (inside sphere)')
-    axes_task4[1].set_aspect('equal')
-    axes_task4[1].grid(True, alpha=0.3)
-    axes_task4[1].set_xlim(-radius*1.1, radius*1.1)
-    axes_task4[1].set_ylim(-radius*1.1, radius*1.1)
-    plt.colorbar(sc2, ax=axes_task4[1]).set_label('B_r [T]', rotation=270, labelpad=15)
+sc2 = axes_task4[1].scatter(df['x_prime'], df['y_prime'], c=df['B_r'],
+                            cmap='coolwarm', s=8, alpha=0.8)
+axes_task4[1].set_xlabel('X\' (m)')
+axes_task4[1].set_ylabel('Y\' (m)')
+axes_task4[1].set_title('B_r distribution')
+axes_task4[1].set_aspect('equal')
+axes_task4[1].grid(True, alpha=0.3)
+plt.colorbar(sc2, ax=axes_task4[1]).set_label('B_r [T]', rotation=270, labelpad=15)
 
 # B_phi
-if 'B_phi' in df_sphere.columns and len(df_sphere) > 0:
-    vmin_phi = df_sphere['B_phi'].quantile(0.05)
-    vmax_phi = df_sphere['B_phi'].quantile(0.95)
-    sc3 = axes_task4[2].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
-                                c=df_sphere['B_phi'], cmap='coolwarm',
-                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
-                                vmin=vmin_phi, vmax=vmax_phi)
-    circle3 = plt.Circle((0, 0), radius, color='black', fill=False,
-                        linestyle='--', linewidth=1.5, alpha=0.7)
-    axes_task4[2].add_patch(circle3)
-    axes_task4[2].set_xlabel('X\' (m)')
-    axes_task4[2].set_ylabel('Y\' (m)')
-    axes_task4[2].set_title('B_φ (inside sphere)')
-    axes_task4[2].set_aspect('equal')
-    axes_task4[2].grid(True, alpha=0.3)
-    axes_task4[2].set_xlim(-radius*1.1, radius*1.1)
-    axes_task4[2].set_ylim(-radius*1.1, radius*1.1)
-    plt.colorbar(sc3, ax=axes_task4[2]).set_label('B_φ [T]', rotation=270, labelpad=15)
+sc3 = axes_task4[2].scatter(df['x_prime'], df['y_prime'], c=df['B_phi'],
+                            cmap='coolwarm', s=8, alpha=0.8)
+axes_task4[2].set_xlabel('X\' (m)')
+axes_task4[2].set_ylabel('Y\' (m)')
+axes_task4[2].set_title('B_φ distribution')
+axes_task4[2].set_aspect('equal')
+axes_task4[2].grid(True, alpha=0.3)
+plt.colorbar(sc3, ax=axes_task4[2]).set_label('B_φ [T]', rotation=270, labelpad=15)
 
-plt.suptitle(f'Magnetic Field Components Inside Sphere\nRadius: {radius}m | Points: {len(df_sphere)}',
-             fontsize=14, y=1.02)
+plt.suptitle(f'Magnetic Field Components (O={center}, R={radius}m)', fontsize=14, y=1.02)
 plt.tight_layout()
-plt.savefig(base_path + 'task4_B_components_sphere.png', dpi=150, bbox_inches='tight')
+plt.savefig(base_path + 'task4_B_components.png', dpi=150, bbox_inches='tight')
 plt.close()
 
 fig_task5, axes_task5 = plt.subplots(1, 3, figsize=(18, 5))
 
 # curl_B_n
-if 'curl_B_n_exact' in df_sphere.columns and len(df_sphere) > 0:
-    vmin_curl_n = df_sphere['curl_B_n_exact'].quantile(0.05)
-    vmax_curl_n = df_sphere['curl_B_n_exact'].quantile(0.95)
-    sc4 = axes_task5[0].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
-                                c=df_sphere['curl_B_n_exact'], cmap='coolwarm',
-                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
-                                vmin=vmin_curl_n, vmax=vmax_curl_n)
-    circle4 = plt.Circle((0, 0), radius, color='black', fill=False,
-                        linestyle='--', linewidth=1.5, alpha=0.7)
-    axes_task5[0].add_patch(circle4)
-    axes_task5[0].set_xlabel('X\' (m)')
-    axes_task5[0].set_ylabel('Y\' (m)')
-    axes_task5[0].set_title('∇×B_n (inside sphere)')
-    axes_task5[0].set_aspect('equal')
-    axes_task5[0].grid(True, alpha=0.3)
-    axes_task5[0].set_xlim(-radius*1.1, radius*1.1)
-    axes_task5[0].set_ylim(-radius*1.1, radius*1.1)
-    plt.colorbar(sc4, ax=axes_task5[0]).set_label('∇×B_n [A/m²]', rotation=270, labelpad=15)
+sc4 = axes_task5[0].scatter(df['x_prime'], df['y_prime'], c=df['curl_B_n_exact'],
+                            cmap='coolwarm', s=8, alpha=0.8)
+axes_task5[0].set_xlabel('X\' (m)')
+axes_task5[0].set_ylabel('Y\' (m)')
+axes_task5[0].set_title('∇×B_n')
+axes_task5[0].set_aspect('equal')
+axes_task5[0].grid(True, alpha=0.3)
+plt.colorbar(sc4, ax=axes_task5[0]).set_label('∇×B_n [A/m²]', rotation=270, labelpad=15)
 
 # curl_B_r
-if 'curl_B_r_exact' in df_sphere.columns and len(df_sphere) > 0:
-    vmin_curl_r = df_sphere['curl_B_r_exact'].quantile(0.05)
-    vmax_curl_r = df_sphere['curl_B_r_exact'].quantile(0.95)
-    sc5 = axes_task5[1].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
-                                c=df_sphere['curl_B_r_exact'], cmap='coolwarm',
-                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
-                                vmin=vmin_curl_r, vmax=vmax_curl_r)
-    circle5 = plt.Circle((0, 0), radius, color='black', fill=False,
-                        linestyle='--', linewidth=1.5, alpha=0.7)
-    axes_task5[1].add_patch(circle5)
-    axes_task5[1].set_xlabel('X\' (m)')
-    axes_task5[1].set_ylabel('Y\' (m)')
-    axes_task5[1].set_title('∇×B_r (inside sphere)')
-    axes_task5[1].set_aspect('equal')
-    axes_task5[1].grid(True, alpha=0.3)
-    axes_task5[1].set_xlim(-radius*1.1, radius*1.1)
-    axes_task5[1].set_ylim(-radius*1.1, radius*1.1)
-    plt.colorbar(sc5, ax=axes_task5[1]).set_label('∇×B_r [A/m²]', rotation=270, labelpad=15)
+sc5 = axes_task5[1].scatter(df['x_prime'], df['y_prime'], c=df['curl_B_r_exact'],
+                            cmap='coolwarm', s=8, alpha=0.8)
+axes_task5[1].set_xlabel('X\' (m)')
+axes_task5[1].set_ylabel('Y\' (m)')
+axes_task5[1].set_title('∇×B_r')
+axes_task5[1].set_aspect('equal')
+axes_task5[1].grid(True, alpha=0.3)
+plt.colorbar(sc5, ax=axes_task5[1]).set_label('∇×B_r [A/m²]', rotation=270, labelpad=15)
 
 # curl_B_phi
-if 'curl_B_phi_exact' in df_sphere.columns and len(df_sphere) > 0:
-    vmin_curl_phi = df_sphere['curl_B_phi_exact'].quantile(0.05)
-    vmax_curl_phi = df_sphere['curl_B_phi_exact'].quantile(0.95)
-    sc6 = axes_task5[2].scatter(df_sphere['x_prime'], df_sphere['y_prime'],
-                                c=df_sphere['curl_B_phi_exact'], cmap='coolwarm',
-                                s=100, alpha=0.7, edgecolors='black', linewidth=0.5,
-                                vmin=vmin_curl_phi, vmax=vmax_curl_phi)
-    circle6 = plt.Circle((0, 0), radius, color='black', fill=False,
-                        linestyle='--', linewidth=1.5, alpha=0.7)
-    axes_task5[2].add_patch(circle6)
-    axes_task5[2].set_xlabel('X\' (m)')
-    axes_task5[2].set_ylabel('Y\' (m)')
-    axes_task5[2].set_title('∇×B_φ (inside sphere)')
-    axes_task5[2].set_aspect('equal')
-    axes_task5[2].grid(True, alpha=0.3)
-    axes_task5[2].set_xlim(-radius*1.1, radius*1.1)
-    axes_task5[2].set_ylim(-radius*1.1, radius*1.1)
-    plt.colorbar(sc6, ax=axes_task5[2]).set_label('∇×B_φ [A/m²]', rotation=270, labelpad=15)
+sc6 = axes_task5[2].scatter(df['x_prime'], df['y_prime'], c=df['curl_B_phi_exact'],
+                            cmap='coolwarm', s=8, alpha=0.8)
+axes_task5[2].set_xlabel('X\' (m)')
+axes_task5[2].set_ylabel('Y\' (m)')
+axes_task5[2].set_title('∇×B_φ')
+axes_task5[2].set_aspect('equal')
+axes_task5[2].grid(True, alpha=0.3)
+plt.colorbar(sc6, ax=axes_task5[2]).set_label('∇×B_φ [A/m²]', rotation=270, labelpad=15)
 
-plt.suptitle(f'∇×B Components Inside Sphere\nRadius: {radius}m | Points: {len(df_sphere)}',
+plt.suptitle(f'∇×B Components\nO={center}, R={radius}m',
              fontsize=12, y=1.02)
 plt.tight_layout()
-plt.savefig(base_path + 'task5_curl_B_sphere.png', dpi=150, bbox_inches='tight')
+plt.savefig(base_path + 'task5_curl_B.png', dpi=150, bbox_inches='tight')
 plt.close()
+
 
 df_sphere, profiles_data = create_sphere_heatmap_profiles(df, center, radius, base_path)
