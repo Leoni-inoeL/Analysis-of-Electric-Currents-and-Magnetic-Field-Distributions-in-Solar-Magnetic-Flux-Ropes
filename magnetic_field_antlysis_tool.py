@@ -99,232 +99,189 @@ def decompose_curl_cylindrical(points_array, curl_array, center, Z_prime, X_prim
     return curl_B_r, curl_B_phi, curl_B_n
 
 
-def create_sphere_heatmap_profiles(df, center, radius, base_path):
-    points_local = df[['x_prime', 'y_prime']].values
-    distances = np.sqrt(points_local[:, 0] ** 2 + points_local[:, 1] ** 2)
+def create_1d_cross_sections(df, center, radius, base_path):
 
-    inside_mask = distances <= radius
-    df_sphere = df[inside_mask].copy()
-    df_sphere['r'] = distances[inside_mask]
+    profile_range = radius * 8
+    tolerance = radius * 0.05
+    #  X' (Y' ≈ 0)
+    mask_x_section = (df['y_prime'].abs() <= tolerance) & \
+                     (df['x_prime'].abs() <= profile_range)
+    df_x_section = df[mask_x_section].copy()
+    df_x_section = df_x_section.sort_values('x_prime')
 
-    if len(df_sphere) < 3:
-        return None
+    # Y' (X' ≈ 0)
+    mask_y_section = (df['x_prime'].abs() <= tolerance) & \
+                     (df['y_prime'].abs() <= profile_range)
+    df_y_section = df[mask_y_section].copy()
+    df_y_section = df_y_section.sort_values('y_prime')
 
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     components = ['B_n', 'B_r', 'B_phi']
-    components = [c for c in components if c in df.columns]
-
-    fig = plt.figure(figsize=(20, 12))
-
-    profiles_data = {}
 
     for idx, component in enumerate(components):
-        ax1 = plt.subplot(3, 4, idx * 4 + 1)
+        if component not in df.columns:
+            continue
 
-        sc1 = ax1.scatter(df_sphere['x_prime'], df_sphere['y_prime'],
-                          c=df_sphere[component], cmap='coolwarm',
-                          s=100, alpha=0.7, edgecolors='black', linewidth=0.5)
+        ax_x = axes[0, idx]
 
-        circle = plt.Circle((0, 0), radius, color='black', fill=False,
-                            linestyle='--', linewidth=2)
-        ax1.add_patch(circle)
+        ax_x.scatter(df_x_section['x_prime'], df_x_section[component],
+                     s=50, alpha=0.7, color='blue', edgecolors='black', linewidth=0.5,
+                     label='Raw values')
 
-        ax1.set_xlabel("X' [m]", fontsize=10)
-        ax1.set_ylabel("Y' [m]", fontsize=10)
-        ax1.set_title(f"{component} Distribution", fontsize=11, fontweight='bold')
-        ax1.grid(True, alpha=0.3, linestyle=':')
-        ax1.set_aspect('equal')
-        ax1.set_xlim(-radius * 1.1, radius * 1.1)
-        ax1.set_ylim(-radius * 1.1, radius * 1.1)
-        cbar1 = plt.colorbar(sc1, ax=ax1)
-        cbar1.set_label(f'{component} [T]', fontsize=9)
+        if len(df_x_section) > 0:
+            sort_idx = np.argsort(df_x_section['x_prime'])
+            ax_x.plot(df_x_section['x_prime'].iloc[sort_idx],
+                      df_x_section[component].iloc[sort_idx],
+                      'b-', linewidth=1, alpha=0.5, label='Connected')
 
-        n_profile_bins = min(15, max(5, len(df_sphere) // 10))
-        x_bins = np.linspace(-radius, radius, n_profile_bins + 1)
-        y_bins = np.linspace(-radius, radius, n_profile_bins + 1)
+        ax_x.axvline(-radius, color='red', linestyle='--', alpha=0.7, linewidth=1.5)
+        ax_x.axvline(radius, color='red', linestyle='--', alpha=0.7, linewidth=1.5)
+        ax_x.axvspan(-radius, radius, alpha=0.1, color='red', label=f'Sphere (r={radius}m)')
 
-        x_centers = (x_bins[1:] + x_bins[:-1]) / 2
-        y_centers = (y_bins[1:] + y_bins[:-1]) / 2
+        ax_x.set_xlabel("X' coordinate [m]", fontsize=11)
+        ax_x.set_ylabel(f"{component} [T]", fontsize=11)
+        ax_x.set_title(f"{component} vs X' (Y' ≈ 0)", fontsize=12, fontweight='bold')
+        ax_x.grid(True, alpha=0.3, linestyle=':')
+        ax_x.legend(fontsize=9, loc='best')
+        ax_x.set_xlim(-profile_range * 1.1, profile_range * 1.1)
 
-        x_profile = []
-        x_std = []
-        x_valid = []
+        # Y' (X' ≈ 0)
+        ax_y = axes[1, idx]
 
-        for i in range(len(x_bins) - 1):
-            circle_radius_at_x = np.sqrt(max(0, radius ** 2 - x_centers[i] ** 2))
+        ax_y.scatter(df_y_section['y_prime'], df_y_section[component],
+                     s=50, alpha=0.7, color='red', edgecolors='black', linewidth=0.5,
+                     label='Raw values')
 
-            if circle_radius_at_x > 0.01:
-                mask = (df_sphere['x_prime'] >= x_bins[i]) & (df_sphere['x_prime'] < x_bins[i + 1])
-                mask = mask & (df_sphere['y_prime'].abs() <= circle_radius_at_x)
+        if len(df_y_section) > 1:
+            sort_idx = np.argsort(df_y_section['y_prime'])
+            ax_y.plot(df_y_section['y_prime'].iloc[sort_idx],
+                      df_y_section[component].iloc[sort_idx],
+                      'r-', linewidth=1, alpha=0.5, label='Connected')
 
-                if mask.sum() > 0:
-                    values = df_sphere.loc[mask, component]
-                    x_profile.append(values.mean())
-                    x_std.append(values.std(ddof=1) if len(values) > 1 else 0)
-                    x_valid.append(True)
-                else:
-                    x_profile.append(np.nan)
-                    x_std.append(0)
-                    x_valid.append(False)
-            else:
-                x_profile.append(np.nan)
-                x_std.append(0)
-                x_valid.append(False)
+        ax_y.axvline(-radius, color='red', linestyle='--', alpha=0.7, linewidth=1.5)
+        ax_y.axvline(radius, color='red', linestyle='--', alpha=0.7, linewidth=1.5)
+        ax_y.axvspan(-radius, radius, alpha=0.1, color='red', label=f'Sphere (r={radius}m)')
 
-        ax2 = plt.subplot(3, 4, idx * 4 + 2)
-        valid_x = np.array(x_valid)
+        ax_y.set_xlabel("Y' coordinate [m]", fontsize=11)
+        ax_y.set_ylabel(f"{component} [T]", fontsize=11)
+        ax_y.set_title(f"{component} vs Y' (X' ≈ 0)", fontsize=12, fontweight='bold')
+        ax_y.grid(True, alpha=0.3, linestyle=':')
+        ax_y.legend(fontsize=9, loc='best')
+        ax_y.set_xlim(-profile_range * 1.1, profile_range * 1.1)
 
-        if valid_x.any():
-            x_centers_valid = x_centers[valid_x]
-            x_profile_valid = np.array(x_profile)[valid_x]
-            x_std_valid = np.array(x_std)[valid_x]
-
-            ax2.errorbar(x_centers_valid, x_profile_valid, yerr=x_std_valid,
-                         fmt='b-', linewidth=2.5, markersize=0, capsize=3,
-                         elinewidth=1.5, capthick=1.5, label='Mean ± Std')
-            ax2.fill_between(x_centers_valid,
-                             x_profile_valid - x_std_valid,
-                             x_profile_valid + x_std_valid,
-                             alpha=0.2, color='blue', label='Std deviation')
-
-        ax2.set_xlabel("X' coordinate [m]", fontsize=10)
-        ax2.set_ylabel(f"{component} [T]", fontsize=10)
-        ax2.set_title(f"{component} along X' axis", fontsize=11, fontweight='bold')
-        ax2.grid(True, alpha=0.3, linestyle=':')
-        ax2.legend(fontsize=9, loc='best')
-        ax2.set_xlim(-radius * 1.05, radius * 1.05)
-
-        y_profile = []
-        y_std = []
-        y_valid = []
-
-        for i in range(len(y_bins) - 1):
-            circle_radius_at_y = np.sqrt(max(0, radius ** 2 - y_centers[i] ** 2))
-
-            if circle_radius_at_y > 0.01:
-                mask = (df_sphere['y_prime'] >= y_bins[i]) & (df_sphere['y_prime'] < y_bins[i + 1])
-                mask = mask & (df_sphere['x_prime'].abs() <= circle_radius_at_y)
-
-                if mask.sum() > 0:
-                    values = df_sphere.loc[mask, component]
-                    y_profile.append(values.mean())
-                    y_std.append(values.std(ddof=1) if len(values) > 1 else 0)
-                    y_valid.append(True)
-                else:
-                    y_profile.append(np.nan)
-                    y_std.append(0)
-                    y_valid.append(False)
-            else:
-                y_profile.append(np.nan)
-                y_std.append(0)
-                y_valid.append(False)
-
-        ax3 = plt.subplot(3, 4, idx * 4 + 3)
-        valid_y = np.array(y_valid)
-
-        if valid_y.any():
-            y_centers_valid = y_centers[valid_y]
-            y_profile_valid = np.array(y_profile)[valid_y]
-            y_std_valid = np.array(y_std)[valid_y]
-
-            ax3.errorbar(y_centers_valid, y_profile_valid, yerr=y_std_valid,
-                         fmt='r-', linewidth=2.5, markersize=0, capsize=3,
-                         elinewidth=1.5, capthick=1.5, label='Mean ± Std')
-            ax3.fill_between(y_centers_valid,
-                             y_profile_valid - y_std_valid,
-                             y_profile_valid + y_std_valid,
-                             alpha=0.2, color='red', label='Std deviation')
-
-        ax3.set_xlabel("Y' coordinate [m]", fontsize=10)
-        ax3.set_ylabel(f"{component} [T]", fontsize=10)
-        ax3.set_title(f"{component} along Y' axis", fontsize=11, fontweight='bold')
-        ax3.grid(True, alpha=0.3, linestyle=':')
-        ax3.legend(fontsize=9, loc='best')
-        ax3.set_xlim(-radius * 1.05, radius * 1.05)
-
-        ax4 = plt.subplot(3, 4, idx * 4 + 4)
-
-        radial_bins = np.linspace(0, radius, min(15, max(5, len(df_sphere) // 5)))
-        radial_centers = (radial_bins[1:] + radial_bins[:-1]) / 2
-        radial_profile = []
-        radial_std = []
-
-        for i in range(len(radial_bins) - 1):
-            mask = (df_sphere['r'] >= radial_bins[i]) & (df_sphere['r'] < radial_bins[i + 1])
-            if mask.sum() > 0:
-                values = df_sphere.loc[mask, component]
-                radial_profile.append(values.mean())
-                radial_std.append(values.std(ddof=1) if len(values) > 1 else 0)
-            else:
-                radial_profile.append(np.nan)
-                radial_std.append(0)
-
-        valid_radial = ~np.isnan(radial_profile)
-        if valid_radial.any():
-            radial_profile_valid = np.array(radial_profile)[valid_radial]
-            radial_std_valid = np.array(radial_std)[valid_radial]
-            radial_centers_valid = radial_centers[valid_radial]
-
-            ax4.errorbar(radial_centers_valid, radial_profile_valid, yerr=radial_std_valid,
-                         fmt='g-', linewidth=2.5, markersize=0, capsize=3,
-                         elinewidth=1.5, capthick=1.5, label='Mean ± Std')
-            ax4.fill_between(radial_centers_valid,
-                             radial_profile_valid - radial_std_valid,
-                             radial_profile_valid + radial_std_valid,
-                             alpha=0.2, color='green', label='Std deviation')
-
-        ax4.set_xlabel('Radial distance [m]', fontsize=10)
-        ax4.set_ylabel(f"{component} [T]", fontsize=10)
-        ax4.set_title(f"{component} radial profile", fontsize=11, fontweight='bold')
-        ax4.grid(True, alpha=0.3, linestyle=':')
-        ax4.legend(fontsize=9, loc='best')
-
-        profiles_data[component] = {
-            'x_centers': x_centers.tolist(),
-            'x_profile': x_profile,
-            'x_std': x_std,
-            'x_valid': x_valid,
-            'y_centers': y_centers.tolist(),
-            'y_profile': y_profile,
-            'y_std': y_std,
-            'y_valid': y_valid,
-            'radial_centers': radial_centers.tolist(),
-            'radial_profile': radial_profile,
-            'radial_std': radial_std
-        }
-
-    plt.suptitle(f'Magnetic Field Analysis Inside Sphere\nRadius: {radius} m | Points inside: {len(df_sphere)}',
+    plt.suptitle(f'1D Cross Sections Through Center\n'
+                 f'Showing raw values along axes through center',
                  fontsize=14, fontweight='bold', y=1.02)
 
     plt.tight_layout()
-    output_path = os.path.join(base_path, 'sphere_analysis.png')
+    output_path = os.path.join(base_path, '1d_cross_sections.png')
     plt.savefig(output_path, dpi=200, bbox_inches='tight')
     plt.close()
 
-    # Create separate DataFrames for each profile type
-    profiles_x_df = pd.DataFrame({'x_coordinate': x_centers})
-    profiles_y_df = pd.DataFrame({'y_coordinate': y_centers})
-    profiles_radial_df = pd.DataFrame({'radial_distance': radial_centers})
+    section_data_x = pd.DataFrame({
+        'x_prime': df_x_section['x_prime'],
+        'B_n': df_x_section['B_n'] if 'B_n' in df_x_section.columns else np.nan,
+        'B_r': df_x_section['B_r'] if 'B_r' in df_x_section.columns else np.nan,
+        'B_phi': df_x_section['B_phi'] if 'B_phi' in df_x_section.columns else np.nan,
+        'y_prime': df_x_section['y_prime'],
+    })
+
+    section_data_y = pd.DataFrame({
+        'y_prime': df_y_section['y_prime'],
+        'B_n': df_y_section['B_n'] if 'B_n' in df_y_section.columns else np.nan,
+        'B_r': df_y_section['B_r'] if 'B_r' in df_y_section.columns else np.nan,
+        'B_phi': df_y_section['B_phi'] if 'B_phi' in df_y_section.columns else np.nan,
+        'x_prime': df_y_section['x_prime'],
+    })
+
+    section_data_x.to_csv(os.path.join(base_path, '1d_section_x.csv'), index=False)
+    section_data_y.to_csv(os.path.join(base_path, '1d_section_y.csv'), index=False)
+
+    return df_x_section, df_y_section
+
+
+def create_radial_profiles(df, center, radius, base_path):
+    n_radial_bins = 20
+    radial_bins = np.linspace(0, radius * 2, n_radial_bins + 1)
+    radial_centers = (radial_bins[1:] + radial_bins[:-1]) / 2
+
+    components = ['B_n', 'B_r', 'B_phi']
+    radial_data = {'radius': radial_centers}
 
     for component in components:
-        if component in profiles_data:
-            profiles_x_df[f'{component}_x_profile'] = profiles_data[component]['x_profile']
-            profiles_x_df[f'{component}_x_std'] = profiles_data[component]['x_std']
+        if component not in df.columns:
+            continue
 
-            profiles_y_df[f'{component}_y_profile'] = profiles_data[component]['y_profile']
-            profiles_y_df[f'{component}_y_std'] = profiles_data[component]['y_std']
+        means = []
+        stds = []
+        counts = []
 
-            profiles_radial_df[f'{component}_radial_profile'] = profiles_data[component]['radial_profile']
-            profiles_radial_df[f'{component}_radial_std'] = profiles_data[component]['radial_std']
+        for i in range(len(radial_bins) - 1):
+            r_min, r_max = radial_bins[i], radial_bins[i + 1]
+            mask = (df['r'] >= r_min) & (df['r'] < r_max)
 
-    csv_output_x = os.path.join(base_path, 'sphere_profiles_x.csv')
-    csv_output_y = os.path.join(base_path, 'sphere_profiles_y.csv')
-    csv_output_radial = os.path.join(base_path, 'sphere_profiles_radial.csv')
+            if mask.sum() > 0:
+                values = df.loc[mask, component]
+                means.append(values.mean())
+                stds.append(values.std() if len(values) > 1 else 0)
+                counts.append(len(values))
+            else:
+                means.append(np.nan)
+                stds.append(np.nan)
+                counts.append(0)
 
-    profiles_x_df.to_csv(csv_output_x, index=False)
-    profiles_y_df.to_csv(csv_output_y, index=False)
-    profiles_radial_df.to_csv(csv_output_radial, index=False)
+        radial_data[f'{component}_mean'] = means
+        radial_data[f'{component}_std'] = stds
+        radial_data[f'{component}_count'] = counts
 
-    return df_sphere, profiles_data
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    for idx, component in enumerate(components):
+        if component not in df.columns:
+            continue
+
+        ax = axes[idx]
+
+        valid_mask = ~np.isnan(radial_data[f'{component}_mean'])
+        r_valid = np.array(radial_data['radius'])[valid_mask]
+        mean_valid = np.array(radial_data[f'{component}_mean'])[valid_mask]
+        std_valid = np.array(radial_data[f'{component}_std'])[valid_mask]
+
+        if len(r_valid) > 0:
+            ax.fill_between(r_valid,
+                            mean_valid - std_valid,
+                            mean_valid + std_valid,
+                            alpha=0.3, color='blue',
+                            label='±1 std dev')
+
+            ax.errorbar(r_valid, mean_valid,
+                        yerr=std_valid,
+                        fmt='bo-', linewidth=2, markersize=5, capsize=4,
+                        label='Mean ± Std')
+
+        ax.axvline(radius, color='red', linestyle='--', linewidth=2,
+                   label=f'Sphere radius ({radius}m)')
+
+        ax.set_xlabel('Radial distance R [m]', fontsize=11)
+        ax.set_ylabel(f'{component} [T]', fontsize=11)
+        ax.set_title(f'Radial profile: {component} vs R', fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3, linestyle=':')
+        ax.legend(fontsize=9, loc='best')
+        ax.set_xlim(0, radius * 2.2)
+
+    plt.suptitle(f'Radial Profiles: Mean ± Standard Deviation\n'
+                 f'Bin width: {radial_bins[1] - radial_bins[0]:.3f}m',
+                 fontsize=14, fontweight='bold', y=1.05)
+
+    plt.tight_layout()
+    output_path = os.path.join(base_path, 'radial_profiles.png')
+    plt.savefig(output_path, dpi=200, bbox_inches='tight')
+    plt.close()
+
+    radial_df = pd.DataFrame(radial_data)
+    radial_df.to_csv(os.path.join(base_path, 'radial_profiles_data.csv'), index=False)
+
+    return radial_df
 
 
 base_path = 'C:/Users/user/Desktop/SummerPractice/'
@@ -653,4 +610,5 @@ plt.savefig(base_path + 'task5_curl_B.png', dpi=150, bbox_inches='tight')
 plt.close()
 
 
-df_sphere, profiles_data = create_sphere_heatmap_profiles(df, center, radius, base_path)
+df_x_section, df_y_section = create_1d_cross_sections(df, center, radius, base_path)
+radial_df = create_radial_profiles(df, center, radius, base_path)
