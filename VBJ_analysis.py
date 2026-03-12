@@ -37,7 +37,7 @@ calculator_B.UpdatePipeline()
 # B_RFP_TRACER <- B_Gs
 stream_tracer_B1 = StreamTracer(Input=calculator_B)
 stream_tracer_B1.SeedType = 'Point Cloud'
-stream_tracer_B1.SeedType.Center = [-1.5, 0.0, 0.3]
+stream_tracer_B1.SeedType.Center = [1.5, 0.0, 0.3]
 stream_tracer_B1.SeedType.Radius = 0.3
 stream_tracer_B1.SeedType.NumberOfPoints = 25
 stream_tracer_B1.MaximumStreamlineLength = 12.0
