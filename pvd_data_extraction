@@ -1,0 +1,636 @@
+from paraview.simple import *
+from paraview import servermanager
+import sys
+import os
+import numpy as np
+import gc
+import signal
+import json
+
+def signal_handler(sig, frame):
+    gc.collect()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
+OUTPUT_BASE = 'C:/Users/user/Desktop/SummerPractice/AnalysisData'
+
+REGIONS = {
+    'footpoint': {
+        'center': [-1.5, 0.0, 0.3],
+        'radius': 0.3,
+        'dynamic_center': True
+    },
+    'apex': {
+        'center': [0.0, 0.0, 1.5],
+        'radius': 0.3,
+        'dynamic_center': True
+    }
+}
+
+SAMPLING_DIMENSIONS = [256, 256, 1]
+N_BINS = 50
+SAVE_RAW_SLICES_EVERY = 1
+SAVE_MAPS_EVERY = 5
+
+B_FACTOR = 1.99757357615242
+J_FACTOR = 15.89619
+
+source = GetActiveSource()
+if source is None:
+    raise RuntimeError("No active source found. Please load the file first.")
+
+print("PointData arrays:")
+for arr in source.PointData.keys():
+    print(f"  - {arr}")
+print("\n")
+
+annotate_time = AnnotateTime()
+annotate_time.Format = 'Time: {time:.2f}'
+RenameSource('AnnotateTime', annotate_time)
+annotate_time.UpdatePipeline()
+
+calculator_V = Calculator(Input=source)
+calculator_V.ResultArrayName = 'V'
+calculator_V.Function = '116.45 * (iHat*v1 + jHat*v2 + kHat*v3)'
+RenameSource('V_km_s', calculator_V)
+calculator_V.UpdatePipeline()
+
+calculator_J = Calculator(Input=source)
+calculator_J.ResultArrayName = 'J'
+calculator_J.Function = '15.89619*(iHat*j1 + jHat*j2 + kHat*j3)'
+RenameSource('J_A_km2', calculator_J)
+calculator_J.UpdatePipeline()
+
+calculator_B = Calculator(Input=source)
+calculator_B.ResultArrayName = 'B'
+calculator_B.Function = '1.99757357615242*(iHat*b1 + jHat*b2 + kHat*b3)'
+RenameSource('B_Gs', calculator_B)
+calculator_B.UpdatePipeline()
+
+calculator_P = Calculator(Input=source)
+calculator_P.ResultArrayName = 'P'
+calculator_P.Function = 'p'
+RenameSource('Pressure_Pa', calculator_P)
+calculator_P.UpdatePipeline()
+
+left_foot_coordinates = [-1.5, 0.0, 0.3]
+right_foot_coordinates = [1.5, 0.0, 0.3]
+radius = 0.3
+n_points = 25
+tube_radius = 0.1
+n_sides = 6
+
+stream_tracer_B1 = StreamTracer(Input=calculator_B)
+stream_tracer_B1.SeedType = 'Point Cloud'
+stream_tracer_B1.SeedType.Center = left_foot_coordinates
+stream_tracer_B1.SeedType.Radius = radius
+stream_tracer_B1.SeedType.NumberOfPoints = n_points
+stream_tracer_B1.MaximumStreamlineLength = 12.0
+stream_tracer_B1.Vectors = ['POINTS', 'B']
+RenameSource('B_LFP_tracer', stream_tracer_B1)
+stream_tracer_B1.UpdatePipeline()
+
+tube_B1 = Tube(Input=stream_tracer_B1)
+tube_B1.Scalars = ['POINTS', 'B']
+tube_B1.Radius = tube_radius
+tube_B1.NumberofSides = n_sides
+RenameSource('Tube_LFP', tube_B1)
+tube_B1.UpdatePipeline()
+
+stream_tracer_B2 = StreamTracer(Input=calculator_B)
+stream_tracer_B2.SeedType = 'Point Cloud'
+stream_tracer_B2.SeedType.Center = right_foot_coordinates
+stream_tracer_B2.SeedType.Radius = radius
+stream_tracer_B2.SeedType.NumberOfPoints = n_points
+stream_tracer_B2.MaximumStreamlineLength = 24.0
+stream_tracer_B2.Vectors = ['POINTS', 'B']
+RenameSource('B_RFP_tracer', stream_tracer_B2)
+stream_tracer_B2.UpdatePipeline()
+
+tube_B2 = Tube(Input=stream_tracer_B2)
+tube_B2.Scalars = ['POINTS', 'B']
+tube_B2.Radius = tube_radius
+tube_B2.NumberofSides = n_sides
+RenameSource('Tube_RFP', tube_B2)
+tube_B2.UpdatePipeline()
+
+slice_filter = Slice(Input=calculator_J)
+slice_filter.SliceType = 'Plane'
+slice_filter.SliceType.Origin = [0.0, 0.0, 0.01]
+slice_filter.SliceType.Normal = [0.0, 0.0, 1.0]
+slice_filter.Triangulatetheslice = 0
+RenameSource('Jz_slice_z=0.01Mm', slice_filter)
+slice_filter.UpdatePipeline()
+
+calculator_Jz_slice = Calculator(Input=slice_filter)
+calculator_Jz_slice.ResultArrayName = 'Jz'
+calculator_Jz_slice.Function = '15.89619*j3'
+RenameSource('Jz_on_slice', calculator_Jz_slice)
+calculator_Jz_slice.UpdatePipeline()
+
+cell_to_point = CellDatatoPointData(Input=calculator_Jz_slice)
+cell_to_point.ProcessAllArrays = 0
+cell_to_point.CellDataArraytoprocess = ['Jz']
+cell_to_point.UpdatePipeline()
+
+stream_tracer_J1 = StreamTracer(Input=calculator_J)
+stream_tracer_J1.SeedType = 'Point Cloud'
+stream_tracer_J1.SeedType.Center = right_foot_coordinates
+stream_tracer_J1.SeedType.Radius = radius
+stream_tracer_J1.SeedType.NumberOfPoints = 2 * n_points
+stream_tracer_J1.MaximumStreamlineLength = 64.0
+stream_tracer_J1.Vectors = ['POINTS', 'J']
+stream_tracer_J1.IntegrationDirection = 'BOTH'
+stream_tracer_J1.IntegratorType = 'Runge-Kutta 4-5'
+RenameSource('J_RFP_tracer', stream_tracer_J1)
+stream_tracer_J1.UpdatePipeline()
+
+tube_J1 = Tube(Input=stream_tracer_J1)
+tube_J1.Scalars = ['POINTS', 'J']
+tube_J1.Radius = tube_radius
+tube_J1.NumberofSides = n_sides
+RenameSource('Tube_J_RFP', tube_J1)
+tube_J1.UpdatePipeline()
+
+stream_tracer_J2 = StreamTracer(Input=calculator_J)
+stream_tracer_J2.SeedType = 'Point Cloud'
+stream_tracer_J2.SeedType.Center = left_foot_coordinates
+stream_tracer_J2.SeedType.Radius = radius
+stream_tracer_J2.SeedType.NumberOfPoints = 2 * n_points
+stream_tracer_J2.MaximumStreamlineLength = 256.0
+stream_tracer_J2.Vectors = ['POINTS', 'J']
+stream_tracer_J2.IntegrationDirection = 'BOTH'
+stream_tracer_J2.IntegratorType = 'Runge-Kutta 4-5'
+RenameSource('J_LFP_tracer', stream_tracer_J2)
+stream_tracer_J2.UpdatePipeline()
+
+tube_J2 = Tube(Input=stream_tracer_J2)
+tube_J2.Scalars = ['POINTS', 'J']
+tube_J2.Radius = tube_radius
+tube_J2.NumberofSides = n_sides
+RenameSource('Tube_J_LFP', tube_J2)
+tube_J2.UpdatePipeline()
+
+def find_dynamic_center(calculator, approximate_center, radius):
+    clip = Clip(Input=calculator)
+    clip.ClipType = 'Sphere'
+    clip.ClipType.Center = approximate_center
+    clip.ClipType.Radius = radius
+    clip.Invert = 0
+    clip.UpdatePipeline()
+    data = servermanager.Fetch(clip)
+    points = data.GetPoints()
+    point_data = data.GetPointData()
+    b_array = point_data.GetArray('B')
+    if b_array is None:
+        Delete(clip)
+        gc.collect()
+        return np.array(approximate_center)
+    total_weight = 0
+    weighted_center = np.zeros(3)
+    for i in range(points.GetNumberOfPoints()):
+        px, py, pz = points.GetPoint(i)
+        bx, by, bz = b_array.GetTuple(i)
+        bmag2 = bx * bx + by * by + bz * bz
+        weighted_center[0] += bmag2 * px
+        weighted_center[1] += bmag2 * py
+        weighted_center[2] += bmag2 * pz
+        total_weight += bmag2
+    if total_weight > 0:
+        weighted_center /= total_weight
+    Delete(clip)
+    gc.collect()
+    return weighted_center
+
+def calculate_local_axes(calculator, center, radius):
+    clip = Clip(Input=calculator)
+    clip.ClipType = 'Sphere'
+    clip.ClipType.Center = center
+    clip.ClipType.Radius = radius
+    clip.Invert = 0
+    clip.UpdatePipeline()
+    integrate = IntegrateVariables(Input=clip)
+    integrate.UpdatePipeline()
+    data = servermanager.Fetch(integrate)
+    cell_data = data.GetCellData()
+    volume = 0
+    b1_total, b2_total, b3_total = 0, 0, 0
+    for i in range(cell_data.GetNumberOfArrays()):
+        arr = cell_data.GetArray(i)
+        name = arr.GetName()
+        if arr.GetNumberOfComponents() == 1 and arr.GetNumberOfTuples() > 0:
+            if name == 'Volume':
+                volume = arr.GetValue(0)
+            elif name == 'b1':
+                b1_total = arr.GetValue(0)
+            elif name == 'b2':
+                b2_total = arr.GetValue(0)
+            elif name == 'b3':
+                b3_total = arr.GetValue(0)
+    Delete(clip)
+    Delete(integrate)
+    gc.collect()
+    if volume > 0:
+        b_mean = np.array([b1_total / volume, b2_total / volume, b3_total / volume])
+        b_norm = b_mean / (np.linalg.norm(b_mean) + 1e-12)
+    else:
+        b_norm = np.array([0.0, 0.0, 1.0])
+    z_prime = b_norm
+    if abs(z_prime[2]) < 0.9:
+        arbitrary = np.array([0.0, 0.0, 1.0])
+    else:
+        arbitrary = np.array([1.0, 0.0, 0.0])
+    x_prime = np.cross(arbitrary, z_prime)
+    if np.linalg.norm(x_prime) > 1e-10:
+        x_prime = x_prime / np.linalg.norm(x_prime)
+    else:
+        x_prime = np.array([1.0, 0.0, 0.0])
+    y_prime = np.cross(z_prime, x_prime)
+    return x_prime, y_prime, z_prime
+
+def point_cylindrical_coords(px, py, pz, center, z_axis, x_axis, y_axis):
+    r_vec = np.array([px, py, pz]) - np.array(center)
+    z_cyl = np.dot(r_vec, z_axis)
+    r_proj = r_vec - z_cyl * z_axis
+    r = np.linalg.norm(r_proj)
+    if r > 1e-10:
+        e_plane = r_proj / r
+        cos_phi = np.dot(e_plane, x_axis)
+        sin_phi = np.dot(e_plane, y_axis)
+        phi = np.arctan2(sin_phi, cos_phi)
+    else:
+        phi = 0.0
+    x_prime = r * np.cos(phi)
+    y_prime = r * np.sin(phi)
+    return r, phi, x_prime, y_prime
+
+def point_vector_decomposition(px, py, pz, vx, vy, vz, center, z_axis, x_axis, y_axis):
+    r_vec = np.array([px, py, pz]) - np.array(center)
+    vector = np.array([vx, vy, vz])
+    vz_comp = np.dot(vector, z_axis)
+    z_val = np.dot(r_vec, z_axis)
+    r_proj = r_vec - z_val * z_axis
+    r_dist = np.linalg.norm(r_proj)
+    if r_dist > 1e-10:
+        e_r = r_proj / r_dist
+        e_phi = np.cross(z_axis, e_r)
+        e_phi = e_phi / (np.linalg.norm(e_phi) + 1e-12)
+        vr_comp = np.dot(vector, e_r)
+        vphi_comp = np.dot(vector, e_phi)
+    else:
+        vr_comp = 0.0
+        vphi_comp = 0.0
+    return vr_comp, vphi_comp, vz_comp
+
+def save_raw_slices(region_name, t_idx, time_val, axes, center):
+    x_axis, y_axis, z_axis = axes
+    slice_types = [
+        {'name': 'perp', 'normal': z_axis.tolist(), 'origin': center},
+        {'name': 'along_x', 'normal': x_axis.tolist(), 'origin': center},
+        {'name': 'along_y', 'normal': y_axis.tolist(), 'origin': center}
+    ]
+    region_dir = os.path.join(OUTPUT_BASE, region_name)
+    os.makedirs(os.path.join(region_dir, 'raw_slices'), exist_ok=True)
+    for st in slice_types:
+        slice_B = Slice(Input=calculator_B)
+        slice_B.SliceType = 'Plane'
+        slice_B.SliceType.Origin = st['origin']
+        slice_B.SliceType.Normal = st['normal']
+        slice_B.Triangulatetheslice = 0
+        slice_B.UpdatePipeline()
+        csv_file = os.path.join(region_dir, 'raw_slices', f'slice_{st["name"]}_B_t{t_idx:04d}.csv')
+        SaveData(csv_file, slice_B, PointDataArrays=['B', 'Points'], Precision=8)
+        Delete(slice_B)
+        slice_J = Slice(Input=calculator_J)
+        slice_J.SliceType = 'Plane'
+        slice_J.SliceType.Origin = st['origin']
+        slice_J.SliceType.Normal = st['normal']
+        slice_J.Triangulatetheslice = 0
+        slice_J.UpdatePipeline()
+        csv_file = os.path.join(region_dir, 'raw_slices', f'slice_{st["name"]}_J_t{t_idx:04d}.csv')
+        SaveData(csv_file, slice_J, PointDataArrays=['J', 'Points'], Precision=8)
+        Delete(slice_J)
+        slice_P = Slice(Input=calculator_P)
+        slice_P.SliceType = 'Plane'
+        slice_P.SliceType.Origin = st['origin']
+        slice_P.SliceType.Normal = st['normal']
+        slice_P.Triangulatetheslice = 0
+        slice_P.UpdatePipeline()
+        csv_file = os.path.join(region_dir, 'raw_slices', f'slice_{st["name"]}_P_t{t_idx:04d}.csv')
+        SaveData(csv_file, slice_P, PointDataArrays=['P', 'Points'], Precision=8)
+        Delete(slice_P)
+        gc.collect()
+    if t_idx % 10 == 0:
+        print(f"    3 slices saved (t={t_idx})")
+
+def save_cylindrical_maps(region_name, t_idx, time_val, axes, center):
+    if t_idx % SAVE_MAPS_EVERY != 0:
+        return
+    x_axis, y_axis, z_axis = axes
+    slice_B = Slice(Input=calculator_B)
+    slice_B.SliceType = 'Plane'
+    slice_B.SliceType.Origin = center
+    slice_B.SliceType.Normal = z_axis.tolist()
+    slice_B.Triangulatetheslice = 0
+    slice_B.UpdatePipeline()
+    data = servermanager.Fetch(slice_B)
+    points = data.GetPoints()
+    b_array = data.GetPointData().GetArray('B')
+    if b_array is None:
+        Delete(slice_B)
+        gc.collect()
+        return
+    region_dir = os.path.join(OUTPUT_BASE, region_name)
+    os.makedirs(os.path.join(region_dir, 'maps'), exist_ok=True)
+    prefix = os.path.join(region_dir, 'maps', f'map_t{t_idx:04d}')
+    with open(f'{prefix}_r.txt', 'w') as f_r, \
+            open(f'{prefix}_phi.txt', 'w') as f_phi, \
+            open(f'{prefix}_Bz.txt', 'w') as f_bz, \
+            open(f'{prefix}_Bphi.txt', 'w') as f_bphi, \
+            open(f'{prefix}_Br.txt', 'w') as f_br, \
+            open(f'{prefix}_Bmag.txt', 'w') as f_bmag, \
+            open(f'{prefix}_Bx.txt', 'w') as f_bx, \
+            open(f'{prefix}_By.txt', 'w') as f_by, \
+            open(f'{prefix}_Bz_cart.txt', 'w') as f_bz_cart:
+        f_r.write('x_prime,y_prime,r\n')
+        f_phi.write('x_prime,y_prime,phi_rad,phi_deg\n')
+        f_bz.write('x_prime,y_prime,Bz\n')
+        f_bphi.write('x_prime,y_prime,Bphi\n')
+        f_br.write('x_prime,y_prime,Br\n')
+        f_bmag.write('x_prime,y_prime,Bmag\n')
+        f_bx.write('x_prime,y_prime,Bx\n')
+        f_by.write('x_prime,y_prime,By\n')
+        f_bz_cart.write('x_prime,y_prime,Bz_cart\n')
+        for i in range(points.GetNumberOfPoints()):
+            px, py, pz = points.GetPoint(i)
+            bx, by, bz = b_array.GetTuple(i)
+            r, phi, xp, yp = point_cylindrical_coords(px, py, pz, center, z_axis, x_axis, y_axis)
+            br, bphi, bz_comp = point_vector_decomposition(px, py, pz, bx, by, bz, center, z_axis, x_axis, y_axis)
+            bmag = np.sqrt(bx * bx + by * by + bz * bz)
+            f_r.write(f'{xp:.6f},{yp:.6f},{r:.6f}\n')
+            f_phi.write(f'{xp:.6f},{yp:.6f},{phi:.6f},{np.degrees(phi):.6f}\n')
+            f_bz.write(f'{xp:.6f},{yp:.6f},{bz_comp:.6f}\n')
+            f_bphi.write(f'{xp:.6f},{yp:.6f},{bphi:.6f}\n')
+            f_br.write(f'{xp:.6f},{yp:.6f},{br:.6f}\n')
+            f_bmag.write(f'{xp:.6f},{yp:.6f},{bmag:.6f}\n')
+            f_bx.write(f'{xp:.6f},{yp:.6f},{bx:.6f}\n')
+            f_by.write(f'{xp:.6f},{yp:.6f},{by:.6f}\n')
+            f_bz_cart.write(f'{xp:.6f},{yp:.6f},{bz:.6f}\n')
+    Delete(slice_B)
+    gc.collect()
+    print(f"    Maps saved (t={t_idx})")
+
+def save_radial_profiles(region_name, t_idx, time_val, axes, center):
+    x_axis, y_axis, z_axis = axes
+    slice_B = Slice(Input=calculator_B)
+    slice_B.SliceType = 'Plane'
+    slice_B.SliceType.Origin = center
+    slice_B.SliceType.Normal = z_axis.tolist()
+    slice_B.Triangulatetheslice = 0
+    slice_B.UpdatePipeline()
+    data = servermanager.Fetch(slice_B)
+    points = data.GetPoints()
+    b_array = data.GetPointData().GetArray('B')
+    if b_array is None:
+        Delete(slice_B)
+        gc.collect()
+        return None, None, None, None, None, None
+    radii = []
+    bz_vals = []
+    bphi_vals = []
+    br_vals = []
+    bmag_vals = []
+    for i in range(points.GetNumberOfPoints()):
+        px, py, pz = points.GetPoint(i)
+        bx, by, bz = b_array.GetTuple(i)
+        r, phi, _, _ = point_cylindrical_coords(px, py, pz, center, z_axis, x_axis, y_axis)
+        br, bphi, bz_comp = point_vector_decomposition(px, py, pz, bx, by, bz, center, z_axis, x_axis, y_axis)
+        radii.append(r)
+        br_vals.append(br)
+        bphi_vals.append(bphi)
+        bz_vals.append(bz_comp)
+        bmag_vals.append(np.sqrt(bx * bx + by * by + bz * bz))
+    if not radii:
+        Delete(slice_B)
+        gc.collect()
+        return None, None, None, None, None, None
+    radii = np.array(radii)
+    bz_vals = np.array(bz_vals)
+    bphi_vals = np.array(bphi_vals)
+    br_vals = np.array(br_vals)
+    bmag_vals = np.array(bmag_vals)
+    sort_idx = np.argsort(radii)
+    radii = radii[sort_idx]
+    bz_vals = bz_vals[sort_idx]
+    bphi_vals = bphi_vals[sort_idx]
+    br_vals = br_vals[sort_idx]
+    bmag_vals = bmag_vals[sort_idx]
+    r_max = np.percentile(radii, 95)
+    r_max = max(r_max, 0.02)
+    r_bins = np.linspace(0, r_max, N_BINS + 1)
+    bin_centers = (r_bins[:-1] + r_bins[1:]) / 2
+    bz_mean = np.zeros(N_BINS)
+    bz_std = np.zeros(N_BINS)
+    bphi_mean = np.zeros(N_BINS)
+    bphi_std = np.zeros(N_BINS)
+    br_mean = np.zeros(N_BINS)
+    br_std = np.zeros(N_BINS)
+    bmag_mean = np.zeros(N_BINS)
+    bmag_std = np.zeros(N_BINS)
+    n_per_bin = np.zeros(N_BINS)
+    for i in range(N_BINS):
+        mask = (radii >= r_bins[i]) & (radii < r_bins[i + 1])
+        n_in_bin = np.sum(mask)
+        if n_in_bin > 0:
+            n_per_bin[i] = n_in_bin
+            bz_mean[i] = np.mean(bz_vals[mask])
+            bz_std[i] = np.std(bz_vals[mask])
+            bphi_mean[i] = np.mean(bphi_vals[mask])
+            bphi_std[i] = np.std(bphi_vals[mask])
+            br_mean[i] = np.mean(br_vals[mask])
+            br_std[i] = np.std(br_vals[mask])
+            bmag_mean[i] = np.mean(bmag_vals[mask])
+            bmag_std[i] = np.std(bmag_vals[mask])
+    region_dir = os.path.join(OUTPUT_BASE, region_name)
+    os.makedirs(os.path.join(region_dir, 'profiles'), exist_ok=True)
+    b_profile_file = os.path.join(region_dir, 'profiles', f'B_profile_t{t_idx:04d}.txt')
+    with open(b_profile_file, 'w') as f:
+        f.write(f"# Time: {time_val}\n")
+        f.write("# r,Bz_mean,Bz_std,Bphi_mean,Bphi_std,Br_mean,Br_std,Bmag_mean,Bmag_std,n_points\n")
+        for i in range(N_BINS):
+            if n_per_bin[i] > 0:
+                f.write(f"{bin_centers[i]:.6f},{bz_mean[i]:.6f},{bz_std[i]:.6f},"
+                        f"{bphi_mean[i]:.6f},{bphi_std[i]:.6f},{br_mean[i]:.6f},{br_std[i]:.6f},"
+                        f"{bmag_mean[i]:.6f},{bmag_std[i]:.6f},{int(n_per_bin[i])}\n")
+    Delete(slice_B)
+    gc.collect()
+    return bin_centers, bz_mean, bphi_mean, bmag_mean, br_mean, n_per_bin
+
+def save_twist(region_name, t_idx, radii, bphi_mean, bz_mean, n_per_bin):
+    valid = (n_per_bin > 0) & (radii > 0.01) & (np.abs(bz_mean) > 1e-6)
+    if not np.any(valid):
+        return
+    radii_valid = radii[valid]
+    bphi_valid = bphi_mean[valid]
+    bz_valid = bz_mean[valid]
+    twist = bphi_valid / (radii_valid * bz_valid)
+    region_dir = os.path.join(OUTPUT_BASE, region_name)
+    os.makedirs(os.path.join(region_dir, 'twist'), exist_ok=True)
+    twist_file = os.path.join(region_dir, 'twist', f'twist_t{t_idx:04d}.txt')
+    with open(twist_file, 'w') as f:
+        f.write("r,twist\n")
+        for i in range(len(radii_valid)):
+            f.write(f"{radii_valid[i]:.6f},{twist[i]:.6f}\n")
+
+def save_rope_boundary(region_name, t_idx, radii, bphi_mean, n_per_bin):
+    valid = n_per_bin > 0
+    if not np.any(valid):
+        return None
+    radii_valid = radii[valid]
+    bphi_valid = bphi_mean[valid]
+    idx_bphi_max = np.argmax(np.abs(bphi_valid))
+    r_bphi_max = radii_valid[idx_bphi_max]
+    bphi_max = bphi_valid[idx_bphi_max]
+    threshold = 0.1 * bphi_max
+    idx_edge = np.where(np.abs(bphi_valid[idx_bphi_max:]) < threshold)[0]
+    if len(idx_edge) > 0:
+        r_boundary = radii_valid[idx_bphi_max + idx_edge[0]]
+    else:
+        r_boundary = radii_valid[-1]
+    region_dir = os.path.join(OUTPUT_BASE, region_name)
+    os.makedirs(os.path.join(region_dir, 'boundary'), exist_ok=True)
+    boundary_file = os.path.join(region_dir, 'boundary', f'rope_boundary_t{t_idx:04d}.txt')
+    with open(boundary_file, 'w') as f:
+        f.write(f"r_Bphi_max,{r_bphi_max:.6f}\n")
+        f.write(f"Bphi_max,{bphi_max:.6f}\n")
+        f.write(f"r_boundary,{r_boundary:.6f}\n")
+    return r_boundary
+
+def save_axes(region_name, t_idx, time_val, center, axes, dynamic_center_used, center_shift):
+    x_axis, y_axis, z_axis = axes
+    region_dir = os.path.join(OUTPUT_BASE, region_name)
+    os.makedirs(os.path.join(region_dir, 'axes'), exist_ok=True)
+    axes_data = {
+        "time_index": t_idx,
+        "time_value": time_val,
+        "dynamic_center_used": dynamic_center_used,
+        "center_shift": float(center_shift),
+        "center": [float(center[0]), float(center[1]), float(center[2])],
+        "x_axis": [float(x_axis[0]), float(x_axis[1]), float(x_axis[2])],
+        "y_axis": [float(y_axis[0]), float(y_axis[1]), float(y_axis[2])],
+        "z_axis": [float(z_axis[0]), float(z_axis[1]), float(z_axis[2])]
+    }
+    axes_file = os.path.join(region_dir, 'axes', f'axes_t{t_idx:04d}.json')
+    with open(axes_file, 'w') as f:
+        json.dump(axes_data, f, indent=2)
+
+os.makedirs(OUTPUT_BASE, exist_ok=True)
+for region_name in REGIONS.keys():
+    os.makedirs(os.path.join(OUTPUT_BASE, region_name), exist_ok=True)
+
+animation_scene = GetAnimationScene()
+timesteps = animation_scene.TimeKeeper.TimestepValues
+
+print("\n")
+
+count = 0
+for t_idx, time_val in enumerate(timesteps):
+    if count >= 3:
+        break
+    count += 1
+    print(f"Time step {t_idx}/{len(timesteps) - 1}: t = {time_val:.2f}")
+
+    animation_scene.TimeKeeper.Time = time_val
+    Render()
+
+    for region_name, region_info in REGIONS.items():
+        static_center = region_info['center']
+        use_dynamic = region_info.get('dynamic_center', False)
+
+        if use_dynamic:
+            center = find_dynamic_center(calculator_B, static_center, region_info['radius'])
+            center_shift = np.linalg.norm(np.array(center) - np.array(static_center))
+            if center_shift > region_info['radius']:
+                center = static_center
+                dynamic_used = False
+                center_shift = 0.0
+            else:
+                dynamic_used = True
+        else:
+            center = static_center
+            dynamic_used = False
+            center_shift = 0.0
+
+        X_prime, Y_prime, Z_prime = calculate_local_axes(calculator_B, center, region_info['radius'])
+        axes = (X_prime, Y_prime, Z_prime)
+
+        save_axes(region_name, t_idx, time_val, center, axes, dynamic_used, center_shift)
+        save_raw_slices(region_name, t_idx, time_val, axes, center)
+        save_cylindrical_maps(region_name, t_idx, time_val, axes, center)
+
+        result = save_radial_profiles(region_name, t_idx, time_val, axes, center)
+
+        if result[0] is not None:
+            radii, bz_mean, bphi_mean, bmag_mean, br_mean, n_per_bin = result
+
+            if len(radii) > 0 and np.sum(n_per_bin) > 0:
+                save_twist(region_name, t_idx, radii, bphi_mean, bz_mean, n_per_bin)
+                r_boundary = save_rope_boundary(region_name, t_idx, radii, bphi_mean, n_per_bin)
+
+                if r_boundary is not None:
+                    print(f"  {region_name}: r_boundary={r_boundary:.3f} Mm")
+
+    gc.collect()
+
+view = GetActiveViewOrCreate('RenderView')
+
+annotate_display = GetDisplayProperties(annotate_time)
+if annotate_display:
+    annotate_display.WindowLocation = 'Lower Left Corner'
+    annotate_display.FontSize = 16
+
+Show(tube_B1, view)
+Show(tube_B2, view)
+
+GetColorTransferFunction('B')
+GetColorTransferFunction('J')
+GetColorTransferFunction('Jz')
+
+for tube in [tube_B1, tube_B2]:
+    display = GetDisplayProperties(tube)
+    if display:
+        display.ColorArrayName = ['POINTS', 'B']
+        display.LookupTable = GetColorTransferFunction('B')
+
+SetActiveSource(cell_to_point)
+cell_to_point.UpdatePipeline()
+
+Jz_lut = GetColorTransferFunction('Jz')
+Jz_lut.RescaleTransferFunction(-10, 10)
+
+slice_display = Show(cell_to_point, view)
+if slice_display:
+    slice_display.Representation = 'Surface'
+    slice_display.ColorArrayName = ['POINTS', 'Jz']
+    slice_display.LookupTable = Jz_lut
+
+B_lut = GetColorTransferFunction('B')
+B_lut.RescaleTransferFunction(0, 500)
+
+j_lut = GetColorTransferFunction('J')
+j_lut.RescaleTransferFunction(0, 30)
+
+source_display = GetDisplayProperties(source)
+if source_display:
+    source_display.Visibility = 0
+
+slice_disp = GetDisplayProperties(slice_filter)
+if slice_disp:
+    slice_disp.Visibility = 0
+
+orig_disp = GetDisplayProperties(calculator_Jz_slice)
+if orig_disp:
+    orig_disp.Visibility = 0
+
+Render()
