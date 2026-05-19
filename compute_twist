@@ -1,0 +1,86 @@
+import numpy as np
+import pandas as pd
+import os
+
+
+OUTPUT_BASE = 'C:/Users/user/Desktop/SummerPractice/AnalysisData'
+
+
+def compute_twist_from_streamline(csv_file_):
+    if not os.path.exists(csv_file):
+        print(f"File not found: {csv_file_}")
+        return None, None, None, None, None
+
+    data = pd.read_csv(csv_file)
+
+    if len(data) < 2:
+        print(f"  Not enough points in streamline")
+        return None, None, None, None, None
+
+    if 'Points:0' in data.columns:
+        x = data['Points:0'].values
+        y = data['Points:1'].values
+        z = data['Points:2'].values
+        bx = data['B_physical:0'].values
+        by = data['B_physical:1'].values
+        bz = data['B_physical:2'].values
+    elif 'Points_X' in data.columns:
+        x = data['Points_X'].values
+        y = data['Points_Y'].values
+        z = data['Points_Z'].values
+        bx = data['B_physical_X'].values
+        by = data['B_physical_Y'].values
+        bz = data['B_physical_Z'].values
+    else:
+        print(f"  Unknown column format in {csv_file}")
+        return None, None, None, None, None
+
+    length = np.sum(np.sqrt(np.diff(x) ** 2 + np.diff(y) ** 2 + np.diff(z) ** 2))
+    z_min = np.min(z)
+    z_max = np.max(z)
+
+    r = np.sqrt(x ** 2 + y ** 2)
+    bphi = (-y * bx + x * by) / (r + 1e-12)
+
+    dz = np.diff(z)
+    valid = (r[:-1] > 0.01) & (np.abs(bz[:-1]) > 0.01)
+
+    if np.sum(valid) < 2:
+        return None, None, None, None, None
+
+    twist_local = bphi[:-1][valid] / (r[:-1][valid] * bz[:-1][valid] + 1e-12)
+    dz_valid = dz[valid]
+    twist_total = np.sum(twist_local * dz_valid)
+    turns = twist_total / (2 * np.pi)
+
+    return twist_total, turns, length, z_min, z_max
+
+
+all_twists = []
+all_lengths = []
+
+for i in range(1, 4):
+    csv_file = os.path.join(OUTPUT_BASE, f'streamline_{i}.csv')
+    print(f"\nStreamline {i}:")
+
+    result = compute_twist_from_streamline(csv_file)
+    if result[0] is not None:
+        twist_total, turns, length, z_min, z_max = result
+        print(f"Length = {length:.3f} Mm")
+        print(f"z range = [{z_min:.3f}, {z_max:.3f}] Mm")
+        print(f"Total twist = {twist_total:.4f} rad")
+        print(f"Number of turns = {turns:.5f}")
+        all_twists.append(abs(twist_total))
+        all_lengths.append(length)
+    else:
+        print(f"Failed to process (streamline may be too short)")
+
+if all_twists:
+    print("\n")
+    print(f"Average length: {np.mean(all_lengths):.3f} Mm")
+    print(f"Average twist magnitude: {np.mean(all_twists):.4f} rad")
+    print(f"Maximum twist: {np.max(all_twists):.4f} rad")
+    print(f"Minimum twist: {np.min(all_twists):.4f} rad")
+
+else:
+    print("\n  No valid streamlines processed")
