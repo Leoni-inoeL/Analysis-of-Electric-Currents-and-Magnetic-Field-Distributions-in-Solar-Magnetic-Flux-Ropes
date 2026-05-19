@@ -1,0 +1,207 @@
+from paraview.simple import *
+import os
+
+source = GetActiveSource()
+if source is None:
+    raise RuntimeError("No active source found")
+
+OUTPUT_BASE = 'C:/Users/user/Desktop/SummerPractice/AnalysisData'
+os.makedirs(OUTPUT_BASE, exist_ok=True)
+
+B_FACTOR = 1.99757357615242
+J_FACTOR = 15.89619
+
+
+source_point = CellDatatoPointData(Input=source)
+source_point.UpdatePipeline()
+
+B_field = Calculator(Input=source_point)
+B_field.ResultArrayName = 'B_physical'
+B_field.Function = f'{B_FACTOR} * (iHat*b1 + jHat*b2 + kHat*b3)'
+B_field.UpdatePipeline()
+
+Bmag = Calculator(Input=B_field)
+Bmag.ResultArrayName = 'Bmag'
+Bmag.Function = 'sqrt(B_physical_X*B_physical_X + B_physical_Y*B_physical_Y + B_physical_Z*B_physical_Z)'
+Bmag.UpdatePipeline()
+
+B_range = Bmag.PointData.GetArray('Bmag').GetRange()
+B_max = B_range[1]
+print(f"   B_max = {B_max:.6f} G")
+
+B_threshold = 0.01 * B_max
+print(f"   Threshold = {B_threshold:.6f} G (1% of B_max)")
+
+contour_B = Contour(Input=Bmag)
+contour_B.ContourBy = ['POINTS', 'Bmag']
+contour_B.Isosurfaces = [B_threshold]
+contour_B.PointMergeMethod = 'Uniform Binning'
+contour_B.UpdatePipeline()
+
+contour_data = servermanager.Fetch(contour_B)
+if contour_data:
+    num_null_candidates = contour_data.GetNumberOfPoints()
+    print(f"   Found {num_null_candidates} candidate points")
+else:
+    num_null_candidates = 0
+    print("   No candidates found")
+
+
+contour_Bx = Contour(Input=B_field)
+contour_Bx.ContourBy = ['POINTS', 'B_physical_X']
+contour_Bx.Isosurfaces = [0.0]
+contour_Bx.UpdatePipeline()
+
+contour_By = Contour(Input=B_field)
+contour_By.ContourBy = ['POINTS', 'B_physical_Y']
+contour_By.Isosurfaces = [0.0]
+contour_By.UpdatePipeline()
+
+contour_Bz = Contour(Input=B_field)
+contour_Bz.ContourBy = ['POINTS', 'B_physical_Z']
+contour_Bz.Isosurfaces = [0.0]
+contour_Bz.UpdatePipeline()
+
+
+Jmag = Calculator(Input=source_point)
+Jmag.ResultArrayName = 'Jmag'
+Jmag.Function = f'{J_FACTOR} * sqrt(j1*j1 + j2*j2 + j3*j3)'
+Jmag.UpdatePipeline()
+
+J_range = Jmag.PointData.GetArray('Jmag').GetRange()
+J_max = J_range[1]
+print(f"J_max = {J_max:.6f} A/km^2")
+
+J_threshold_99 = 0.99 * J_max
+J_threshold_95 = 0.95 * J_max
+print(f"Threshold (top 1%) = {J_threshold_99:.6f} A/km^2")
+print(f"Threshold (top 5%) = {J_threshold_95:.6f} A/km^2")
+
+contour_J_top1 = Contour(Input=Jmag)
+contour_J_top1.ContourBy = ['POINTS', 'Jmag']
+contour_J_top1.Isosurfaces = [J_threshold_99]
+contour_J_top1.UpdatePipeline()
+
+contour_J_top5 = Contour(Input=Jmag)
+contour_J_top5.ContourBy = ['POINTS', 'Jmag']
+contour_J_top5.Isosurfaces = [J_threshold_95]
+contour_J_top5.UpdatePipeline()
+
+j_data = servermanager.Fetch(contour_J_top1)
+if j_data:
+    num_current_candidates = j_data.GetNumberOfPoints()
+    print(f"   Top 1% current candidates: {num_current_candidates} points")
+else:
+    num_current_candidates = 0
+    print("   No current layer candidates found")
+
+
+start_points = [
+    [-1.5, 0.0, 0.3],
+    [-1.5, 0.2, 0.3],
+    [-1.5, -0.2, 0.3],
+]
+
+streamlines = []
+for i, start in enumerate(start_points):
+    print(f"   Tracing streamline {i + 1} from {start}...")
+
+    streamline = StreamTracer(Input=B_field)
+    streamline.SeedType = 'Point Cloud'
+    streamline.SeedType.Center = start
+    streamline.SeedType.Radius = 0.05
+    streamline.SeedType.NumberOfPoints = 1
+    streamline.MaximumStreamlineLength = 50.0
+    streamline.Vectors = ['POINTS', 'B_physical']
+    streamline.IntegrationDirection = 'BOTH'
+    streamline.UpdatePipeline()
+
+    streamlines.append(streamline)
+
+    SaveData(os.path.join(OUTPUT_BASE, f'streamline_{i + 1}.csv'), streamline)
+
+view = GetActiveViewOrCreate('RenderView')
+view.ViewSize = [1200, 800]
+view.Background = [0.1, 0.1, 0.1]
+
+if num_null_candidates > 0:
+    Show(contour_B, view)
+    disp_B = GetDisplayProperties(contour_B)
+    disp_B.Representation = 'Points'
+    disp_B.PointSize = 3
+    disp_B.ColorArrayName = ['POINTS', 'Bmag']
+    disp_B.LookupTable = GetColorTransferFunction('Bmag')
+
+Show(contour_Bx, view)
+disp_Bx = GetDisplayProperties(contour_Bx)
+disp_Bx.Representation = 'Surface'
+disp_Bx.ColorArrayName = ['POINTS', 'B_physical_X']
+disp_Bx.Opacity = 0.3
+
+Show(contour_By, view)
+disp_By = GetDisplayProperties(contour_By)
+disp_By.Representation = 'Surface'
+disp_By.ColorArrayName = ['POINTS', 'B_physical_Y']
+disp_By.Opacity = 0.3
+
+Show(contour_Bz, view)
+disp_Bz = GetDisplayProperties(contour_Bz)
+disp_Bz.Representation = 'Surface'
+disp_Bz.ColorArrayName = ['POINTS', 'B_physical_Z']
+disp_Bz.Opacity = 0.3
+
+
+if num_current_candidates > 0:
+    Show(contour_J_top1, view)
+    disp_J = GetDisplayProperties(contour_J_top1)
+    disp_J.Representation = 'Surface'
+    disp_J.ColorArrayName = ['POINTS', 'Jmag']
+    disp_J.LookupTable = GetColorTransferFunction('Jmag')
+
+for streamline in streamlines:
+    Show(streamline, view)
+    disp_s = GetDisplayProperties(streamline)
+    disp_s.LineWidth = 2
+
+try:
+    B_lut = GetColorTransferFunction('Bmag')
+    B_lut.RescaleTransferFunction(0, B_max)
+    B_lut.ColorSpace = 'HSV'
+
+    J_lut = GetColorTransferFunction('Jmag')
+    J_lut.RescaleTransferFunction(0, J_max)
+    J_lut.ColorSpace = 'HSV'
+except:
+    pass
+
+
+if num_null_candidates > 0:
+    SaveData(os.path.join(OUTPUT_BASE, 'null_points_threshold.vtp'), contour_B)
+
+SaveData(os.path.join(OUTPUT_BASE, 'Bx0_isosurface.vtp'), contour_Bx)
+SaveData(os.path.join(OUTPUT_BASE, 'By0_isosurface.vtp'), contour_By)
+SaveData(os.path.join(OUTPUT_BASE, 'Bz0_isosurface.vtp'), contour_Bz)
+
+if num_current_candidates > 0:
+    SaveData(os.path.join(OUTPUT_BASE, 'current_sheets_top1.vtp'), contour_J_top1)
+    SaveData(os.path.join(OUTPUT_BASE, 'current_sheets_top5.vtp'), contour_J_top5)
+
+report_file = os.path.join(OUTPUT_BASE, 'topology_analysis_report.txt')
+with open(report_file, 'w') as f:
+    f.write("\n")
+    f.write("Magnetic null points\n")
+    f.write(f"B_max = {B_max:.6f} G\n")
+    f.write(f"Threshold (1% of B_max) = {B_threshold:.6f} G\n")
+    f.write(f"Candidate null points = {num_null_candidates}\n\n")
+
+    f.write("Current sheet candidatesS\n")
+    f.write(f"J_max = {J_max:.6f} A/km^2\n")
+    f.write(f"Threshold (top 1%) = {J_threshold_99:.6f} A/km^2\n")
+    f.write(f"Candidate points = {num_current_candidates}\n\n")
+
+
+print(f"   Report saved to {report_file}")
+
+Render()
+
+print(f"Output directory: {OUTPUT_BASE}")
