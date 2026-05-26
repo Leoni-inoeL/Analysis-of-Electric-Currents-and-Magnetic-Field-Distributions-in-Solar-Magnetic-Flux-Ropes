@@ -1,0 +1,314 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+
+DATA_DIR = Path(r"C:/Users/user/Desktop/SummerPractice/AnalysisData/Fitting_Rep")  # path to the fit results file
+df = pd.read_csv(DATA_DIR / "all_fit_results.csv")  # the fit results file
+
+df['time_num'] = df['time'].astype(float)
+
+
+def analyze_model_performance(df_):
+    """Анализ производительности каждой модели"""
+
+    models = ['Gold-Hoyle', 'Lundquist', 'Exponential', 'Step-like']
+    results = {}
+
+    for model_ in models:
+        model_df = df_[df_['model'] == model_]
+
+        foot = model_df[model_df['region'] == 'footpoint']
+        apex = model_df[model_df['region'] == 'apex']
+
+        results[model_] = {
+            'footpoint': {
+                'mean_NRMSE': foot['NRMSE'].mean(),
+                'std_NRMSE': foot['NRMSE'].std(),
+                'mean_AIC': foot['AIC'].mean(),
+                'n_fits': len(foot)
+            },
+            'apex': {
+                'mean_NRMSE': apex['NRMSE'].mean(),
+                'std_NRMSE': apex['NRMSE'].std(),
+                'mean_AIC': apex['AIC'].mean(),
+                'n_fits': len(apex)
+            }
+        }
+
+    return results
+
+
+def get_best_model_per_timestep(df_):
+
+    best_models_ = []
+
+    for region_ in ['footpoint', 'apex']:
+        region_df = df_[df_['region'] == region_]
+
+        for time in region_df['time_num'].unique():
+            time_df = region_df[region_df['time_num'] == time]
+
+            if len(time_df) > 0:
+                best = time_df.loc[time_df['AIC'].idxmin()]
+                best_models_.append({
+                    'time': time,
+                    'region': region_,
+                    'best_model': best['model'],
+                    'NRMSE': best['NRMSE'],
+                    'AIC': best['AIC']
+                })
+
+    return pd.DataFrame(best_models_)
+
+
+def plot_model_comparison(df_):
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    models = ['Gold-Hoyle', 'Lundquist', 'Exponential', 'Step-like']
+    colors = {'Gold-Hoyle': 'blue', 'Lundquist': 'red',
+              'Exponential': 'green', 'Step-like': 'orange'}
+
+    for region_idx, region_ in enumerate(['footpoint', 'apex']):
+        row = 0 if region_idx == 0 else 1
+
+        for model_ in models:
+            model_df = df_[(df_['region'] == region_) & (df_['model'] == model_)]
+            if len(model_df) > 0:
+                axes[row, 0].plot(model_df['time_num'], model_df['NRMSE'],
+                                  'o-', color=colors[model], label=model_, markersize=3)
+                axes[row, 1].plot(model_df['time_num'], model_df['AIC'],
+                                  'o-', color=colors[model], label=model_, markersize=3)
+
+        axes[row, 0].set_title(f'{region_}: NRMSE Evolution')
+        axes[row, 0].set_xlabel('Time')
+        axes[row, 0].set_ylabel('NRMSE')
+        axes[row, 0].legend()
+        axes[row, 0].grid(True, alpha=0.3)
+
+        axes[row, 1].set_title(f'{region_}: AIC Evolution')
+        axes[row, 1].set_xlabel('Time')
+        axes[row, 1].set_ylabel('AIC')
+        axes[row, 1].legend()
+        axes[row, 1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(DATA_DIR / 'model_comparison.png', dpi=150)
+    plt.close()
+
+
+def plot_gold_hoyle_parameters(df_):
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    for region_ in ['footpoint', 'apex']:
+        gh_df = df_[(df_['region'] == region_) & (df_['model'] == 'Gold-Hoyle')]
+
+        if len(gh_df) > 0:
+            # q param
+            axes[0].plot(gh_df['time_num'], gh_df['q'], 'o-', label=region_, markersize=3)
+
+            # NRMSE
+            axes[1].plot(gh_df['time_num'], gh_df['NRMSE'], 'o-', label=region_, markersize=3)
+
+            # AIC
+            axes[2].plot(gh_df['time_num'], gh_df['AIC'], 'o-', label=region_, markersize=3)
+
+    axes[0].set_title('Twist Parameter q')
+    axes[0].set_xlabel('Time')
+    axes[0].set_ylabel('q')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].set_title('Fit Quality (NRMSE)')
+    axes[1].set_xlabel('Time')
+    axes[1].set_ylabel('NRMSE')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    axes[2].set_title('Akaike Information Criterion')
+    axes[2].set_xlabel('Time')
+    axes[2].set_ylabel('AIC')
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(DATA_DIR / 'gold_hoyle_evolution.png', dpi=150)
+    plt.close()
+
+
+def plot_exponential_parameters(df_):
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    for region_ in ['footpoint', 'apex']:
+        exp_df = df_[(df['region'] == region_) & (df_['model'] == 'Exponential')]
+
+        if len(exp_df) > 0:
+            axes[0].plot(exp_df['time_num'], exp_df['k'], 'o-', label=region_, markersize=3)
+            axes[1].plot(exp_df['time_num'], exp_df['g'], 'o-', label=region_, markersize=3)
+            axes[2].plot(exp_df['time_num'], exp_df['NRMSE'], 'o-', label=region_, markersize=3)
+
+    axes[0].set_title('Decay Parameter k')
+    axes[0].set_xlabel('Time')
+    axes[0].set_ylabel('k')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].set_title('Shielding Parameter g')
+    axes[1].set_xlabel('Time')
+    axes[1].set_ylabel('g')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    axes[2].set_title('Fit Quality (NRMSE)')
+    axes[2].set_xlabel('Time')
+    axes[2].set_ylabel('NRMSE')
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(DATA_DIR / 'exponential_evolution.png', dpi=150)
+    plt.close()
+
+
+def plot_best_model_summary(df_):
+    """Сводка лучших моделей по времени"""
+
+    best_models_ = get_best_model_per_timestep(df_)
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+
+    colors = {'Gold-Hoyle': 'blue', 'Lundquist': 'red',
+              'Exponential': 'green', 'Step-like': 'orange'}
+
+    for region_idx, region_ in enumerate(['footpoint', 'apex']):
+        region_df = best_models_[best_models_['region'] == region_]
+
+        for model_ in colors.keys():
+            model_df = region_df[region_df['best_model'] == model_]
+            if len(model_df) > 0:
+                axes[region_idx].scatter(model_df['time'], model_df['NRMSE'],
+                                         color=colors[model_], label=model_, s=50, alpha=0.7)
+
+        axes[region_idx].set_title(f'{region_}: Best Model by AIC')
+        axes[region_idx].set_xlabel('Time')
+        axes[region_idx].set_ylabel('NRMSE')
+        axes[region_idx].legend()
+        axes[region_idx].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(DATA_DIR / 'best_model_summary.png', dpi=150)
+    plt.close()
+
+
+def plot_rope_radius_evolution(df_):
+    radius_data = df_.groupby(['region', 'time_num'])['Rrope'].first().reset_index()
+
+    plt.figure(figsize=(10, 6))
+
+    for region_ in ['footpoint', 'apex']:
+        region_df = radius_data[radius_data['region'] == region_]
+        plt.plot(region_df['time_num'], region_df['Rrope'], 'o-', label=region_, markersize=4)
+
+    plt.xlabel('Time')
+    plt.ylabel('Rope Radius')
+    plt.title('Evolution of Rope Radius')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(DATA_DIR / 'rope_radius_evolution.png', dpi=150)
+    plt.close()
+
+
+def create_summary_table(df_):
+
+    summary = []
+
+    stages = [
+        ('Early (t=0.1-2.3)', 0.1, 2.3),
+        ('Middle (t=2.4-7.9)', 2.4, 7.9),
+        ('Late (t=8.0-11.2)', 8.0, 11.2)
+    ]
+
+    for region_ in ['footpoint', 'apex']:
+        for model_ in ['Gold-Hoyle', 'Exponential', 'Lundquist']:
+            model_df = df_[(df_['region'] == region_) & (df_['model'] == model_)]
+
+            for stage_name, t_min, t_max in stages:
+                stage_df = model_df[(model_df['time_num'] >= t_min) & (model_df['time_num'] <= t_max)]
+
+                if len(stage_df) > 0:
+                    summary.append({
+                        'Region': region_,
+                        'Model': model_,
+                        'Stage': stage_name,
+                        'Mean NRMSE': stage_df['NRMSE'].mean(),
+                        'Std NRMSE': stage_df['NRMSE'].std(),
+                        'Mean AIC': stage_df['AIC'].mean(),
+                        'N': len(stage_df)
+                    })
+
+    summary_df = pd.DataFrame(summary)
+    return summary_df
+
+
+def analyze_shielding_signatures(df_):
+
+    exp_df = df_[df_['model'] == 'Exponential']
+
+    shielding_analysis = []
+
+    for region_ in ['footpoint', 'apex']:
+        region_df = exp_df[exp_df['region'] == region_]
+
+        if len(region_df) > 0:
+            g_values = region_df['g'].dropna()
+
+            shielding_analysis.append({
+                'Region': region_,
+                'Mean g': g_values.mean(),
+                'Std g': g_values.std(),
+                'Min g': g_values.min(),
+                'Max g': g_values.max(),
+                'Interpretation': 'Strong shielding' if g_values.mean() > 0.8 else
+                'Moderate shielding' if g_values.mean() > 0.6 else
+                'Weak shielding'
+            })
+
+    return pd.DataFrame(shielding_analysis)
+
+
+print("\n1. Model Performance Analysis:")
+performance = analyze_model_performance(df)
+for model, data in performance.items():
+    print(f"\n{model}:")
+    for region, metrics in data.items():
+        print(f"  {region}: NRMSE={metrics['mean_NRMSE']:.4f}±{metrics['std_NRMSE']:.4f}, "
+              f"AIC={metrics['mean_AIC']:.1f}, N={metrics['n_fits']}")
+
+print("\n2. Shielding Analysis (Exponential model):")
+shielding = analyze_shielding_signatures(df)
+print(shielding.to_string(index=False))
+
+print("\n3. Summary Table by Stage:")
+summary_table = create_summary_table(df)
+print(summary_table.to_string(index=False))
+
+print("\n4. Best Models per Timestep:")
+best_models = get_best_model_per_timestep(df)
+print(best_models.to_string(index=False))
+
+print("\n5. Generating plots...")
+plot_model_comparison(df)
+plot_gold_hoyle_parameters(df)
+plot_exponential_parameters(df)
+plot_best_model_summary(df)
+plot_rope_radius_evolution(df)
+print(f"   Plots saved to: {DATA_DIR}")
+
+summary_table.to_csv(DATA_DIR / 'summary_table.csv', index=False)
+best_models.to_csv(DATA_DIR / 'best_models.csv', index=False)
+shielding.to_csv(DATA_DIR / 'shielding_analysis.csv', index=False)
+
+print("All done! :>")
