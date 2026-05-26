@@ -4,14 +4,13 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 
-DATA_DIR = Path(r"C:/Users/user/Desktop/SummerPractice/AnalysisData/Fitting_Rep")  # path to the fit results file
+DATA_DIR = Path(r"")  # path to the fit results file
 df = pd.read_csv(DATA_DIR / "all_fit_results.csv")  # the fit results file
 
 df['time_num'] = df['time'].astype(float)
 
 
 def analyze_model_performance(df_):
-    """Анализ производительности каждой модели"""
 
     models = ['Gold-Hoyle', 'Lundquist', 'Exponential', 'Step-like']
     results = {}
@@ -173,7 +172,6 @@ def plot_exponential_parameters(df_):
 
 
 def plot_best_model_summary(df_):
-    """Сводка лучших моделей по времени"""
 
     best_models_ = get_best_model_per_timestep(df_)
 
