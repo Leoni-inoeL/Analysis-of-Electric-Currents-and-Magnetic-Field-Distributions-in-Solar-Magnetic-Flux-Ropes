@@ -1,18 +1,12 @@
 # Analysis-of-Electric-Currents-and-Magnetic-Field-Distributions-in-Solar-Magnetic-Flux-Ropes
 (Bachelor's thesis)
-
-Instructions on how to run the code:
-
-
-finding_center.py
-1. Clone the repository:
-   git clone https://github.com/Leoni-inoeL/Analysis-of-Electric-Currents-and-Magnetic-Field-Distributions-in-Solar-Magnetic-Flux-Ropes.git
-2. Change the path to the folder you want the data to be downloaded to in the file data_loader.py (line 37: sunpy_data_dir = "C:\\Users\\user\\sunpy\\data").
-3. Run finding_center.py
+The list of files that were used for the thesis:
+1. pvd_data_extraction.py <- this script extracts regional data from a MHD simulation for further analysis;
+2. rainbow_radial_profiles_plot.py <- this script uses extracted data to build plot for selsected time steps;
+3. model_fit.py <- this script fits the exctracted data to 4 shielded theoretical models (Solov'ev & Kirichek, 2021) and builds plots, the data is then saved to the "all_fit_results.csv";
+4. all_fit_results.csv <- this file contains all fit data;
+5. check_results.py <- this script takes data from all_fit_results.csv and presents it in a readable format ready for further analysis.
 
 
-magnetic_field_antlysis_tool.py
+ P.s. This repository also contains a visualisation pipeline for ParaView that was used for interpretation of the MHD simulation but did not make it to the final version of the methodology section. 
 
-
-1. Open ParaView and load the file with magnetic field data.
-2. "Tools" -> "ParaView Python Editor" -> Paste this script there -> Set base_path (line 102) as the directory you want the files to be saved to -> "File" -> "Run". 
