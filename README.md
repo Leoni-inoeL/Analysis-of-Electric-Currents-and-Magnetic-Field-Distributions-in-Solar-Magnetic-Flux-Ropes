@@ -8,5 +8,6 @@ The list of files that were used for the thesis:
 5. check_results.py <- this script takes data from all_fit_results.csv and presents it in a readable format ready for further analysis.
 
 
- P.s. This repository also contains a visualisation pipeline for ParaView that was used for interpretation of the MHD simulation but did not make it to the final version of the methodology section. 
+
+P.s. This repository also contains a visualisation pipeline for ParaView that was used for interpretation of the MHD simulation but did not make it to the final version of the methodology section. The file is called "VBJ_analysis.py". It's an earlier vesion of "pvd_data_exctraction.py". Data was being processed directly in ParaView without any additional exctractions but it was very resource-demanding (mostly RAM) so the visualisation was removed from the later version of the code to avoid crushes. 
 
